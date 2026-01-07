@@ -1,0 +1,46 @@
+Building...
+
+                                         
+                                             ___________      __ __           __               
+                                             \_   _____/__  _|__|  |    ____ |__| ____ ___  ___
+                                              |    __)_\  \/ /  |  |   / __ \|  |/    \\  \/  /
+                                              |        \\   /|  |  |__/ /_/  >  |   |  \>    < 
+                                             /_______  / \_/ |__|____/\___  /|__|___|  /__/\_ \
+                                                     \/              /_____/         \/      \/
+                                         
+                                                        - --  Community Edition  -- -
+                                         
+                                               by Kuba Gretzky (@mrgretzky)     version 3.3.0
+                                         
+
+[06:21:51] [inf] Evilginx Pro is finally out: https://evilginx.com (advanced phishing framework for red teams)
+[06:21:51] [inf] Evilginx Mastery Course: https://academy.breakdev.org/evilginx-mastery (learn how to create phishlets)
+[06:21:51] [inf] debug output enabled
+[06:21:51] [inf] loading phishlets from: ./phishlets
+[06:21:51] [inf] loading configuration from: C:\Users\LENOVO\.evilginx
+[06:21:51] [inf] blacklist: loaded 0 ip addresses and 0 ip masks
+
++--------------+-----------+-------------+-------------------+-------------+
+|  phishlet    |  status   | visibility  |     hostname      | unauth_url  |
++--------------+-----------+-------------+-------------------+-------------+
+| example      | disabled  | visible     |                   |             |
+| office365    | enabled   | visible     | office.fake.com   |             |
+| one          | enabled   | visible     | one.fake.com      |             |
+| owa          | disabled  | visible     | owa.fake.com      |             |
+| rackspace    | enabled   | visible     | rackspace.fak...  |             |
+| yahoo-small  | enabled   | visible     | turbify.fake.com  |             |
++--------------+-----------+-------------+-------------------+-------------+
+
+: : g: gh: gh: gh: gh^C
+[06:23:54] [inf] type 'exit' in order to quit
+: : : : : : ^C
+[06:23:57] [inf] type 'exit' in order to quit
+: : Z: ZX: ZXC: ZXC: ZXC: ZXC^C
+[06:24:01] [inf] type 'exit' in order to quit
+: : : : ^C
+[06:24:02] [inf] type 'exit' in order to quit
+: : : : ^C
+[06:24:02] [inf] type 'exit' in order to quit
+: : : : ^C
+[06:24:02] [inf] type 'exit' in order to quit
+: 

