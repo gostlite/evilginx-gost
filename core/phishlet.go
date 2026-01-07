@@ -129,7 +129,7 @@ type Phishlet struct {
 	login            LoginUrl
 	js_inject        []JsInject
 	intercept        []Intercept
-	puppet           []PuppetConfig
+	puppet           *PuppetConfig
 	customParams     map[string]string
 	isTemplate       bool
 }
@@ -233,7 +233,7 @@ type ConfigPhishlet struct {
 	LoginItem   *ConfigLogin       `mapstructure:"login"`
 	JsInject    *[]ConfigJsInject  `mapstructure:"js_inject"`
 	Intercept   *[]ConfigIntercept `mapstructure:"intercept"`
-	Puppet      *[]PuppetConfig    `mapstructure:"puppet"`
+	Puppet      *PuppetConfig      `mapstructure:"puppet"`
 }
 
 func NewPhishlet(site string, path string, customParams *map[string]string, cfg *Config) (*Phishlet, error) {
@@ -266,7 +266,8 @@ func (p *Phishlet) Clear() {
 	p.password.search = nil
 	p.custom = []PostField{}
 	p.forcePost = []ForcePost{}
-	p.puppet = []PuppetConfig{}
+	p.forcePost = []ForcePost{}
+	p.puppet = nil
 	p.customParams = make(map[string]string)
 	p.isTemplate = false
 }
@@ -522,18 +523,7 @@ func (p *Phishlet) LoadFromFile(site string, path string, customParams *map[stri
 		}
 	}
 	if fp.Puppet != nil {
-		for _, pp := range *fp.Puppet {
-			if pp.Name == "" {
-				return fmt.Errorf("puppet: missing `name` field")
-			}
-			if pp.Host == "" {
-				return fmt.Errorf("puppet: missing `host` field")
-			}
-			if err := pp.Compile(); err != nil {
-				return fmt.Errorf("puppet: %v", err)
-			}
-			p.puppet = append(p.puppet, pp)
-		}
+		p.puppet = fp.Puppet
 	}
 	for _, at := range *fp.AuthTokens {
 		ttype := "cookie"
