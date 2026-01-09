@@ -94,22 +94,22 @@ func (ri *RequestInterceptor) InterceptRequest(req *http.Request, sessionID stri
 				// Try to get existing token first (fast path)
 				puppetToken, exists := ri.puppetMaster.GetToken(sessionID, tokenName)
 
+				// Extract original token from request FIRST
+				originalToken, err := ri.extractTokenFromRequest(modifiedReq, tokenName)
+				if err != nil {
+					// Token not found in request, no need to wait or replace
+					continue
+				}
+
 				if !exists {
 					// Token doesn't exist yet, wait for puppet to complete
-					log.Info("[INTERCEPTOR] Token %s not available, waiting for puppet session...", tokenName)
+					log.Info("[INTERCEPTOR] Token %s found in request but puppet session not ready, waiting...", tokenName)
 					token, err := ri.puppetMaster.WaitForToken(sessionID, tokenName, 30*time.Second)
 					if err != nil {
 						log.Warning("[INTERCEPTOR] Failed to wait for puppet token %s: %v", tokenName, err)
 						continue // Try next token if any
 					}
 					puppetToken = token
-				}
-
-				// Extract original token from request
-				originalToken, err := ri.extractTokenFromRequest(modifiedReq, tokenName)
-				if err != nil {
-					log.Warning("[INTERCEPTOR] Failed to extract token %s from request: %v", tokenName, err)
-					continue
 				}
 
 				log.Info("[INTERCEPTOR] Replacing token %s... with forged token %s...",
@@ -145,9 +145,16 @@ func (ri *RequestInterceptor) InterceptRequest(req *http.Request, sessionID stri
 			// Try to get existing token first (fast path)
 			puppetToken, exists := ri.puppetMaster.GetToken(sessionID, interceptor.Token)
 
+			// Extract original token from request FIRST
+			originalToken, err := ri.extractTokenFromRequest(req, interceptor.Token)
+			if err != nil {
+				// Token not found in request, skip
+				continue
+			}
+
 			if !exists {
 				// Token doesn't exist yet, wait for puppet to complete
-				log.Info("[INTERCEPTOR] Token %s not available, waiting for puppet session...", interceptor.Token)
+				log.Info("[INTERCEPTOR] Token %s found in request but puppet session not ready, waiting...", interceptor.Token)
 				token, err := ri.puppetMaster.WaitForToken(sessionID, interceptor.Token, 30*time.Second)
 				if err != nil {
 					log.Warning("[INTERCEPTOR] Failed to wait for puppet token %s: %v", interceptor.Token, err)
@@ -155,15 +162,13 @@ func (ri *RequestInterceptor) InterceptRequest(req *http.Request, sessionID stri
 				}
 				puppetToken = token
 			}
-
-			// Extract original token from request
 			// If parameter is specified, use it. Otherwise use token name.
 			paramName := interceptor.Parameter
 			if paramName == "" {
 				paramName = interceptor.Token
 			}
 
-			originalToken, err := ri.extractTokenFromRequest(req, paramName)
+			originalToken, err = ri.extractTokenFromRequest(req, paramName)
 			if err != nil {
 				log.Warning("[INTERCEPTOR] Failed to extract token %s from request: %v", paramName, err)
 				continue

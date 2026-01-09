@@ -970,26 +970,33 @@ func (c *Config) GetPuppetTriggersForPhishlet(phishlet string) []PuppetTrigger {
 	}
 	
 	// 2. Add triggers defined in the phishlet itself
-	if pl, err := c.GetPhishlet(phishlet); err == nil && pl.puppet != nil {
-		for _, t := range pl.puppet.Triggers {
-			if t.Enabled {
-				// Don't add if already added by global config (basic de-duplication by name)
-				exists := false
-				for _, et := range triggers {
-					if et.Name == t.Name {
-						exists = true
-						break
+	if pl, err := c.GetPhishlet(phishlet); err == nil {
+		if pl.puppet != nil {
+			log.Debug("[PUPPET] Found %d phishlet-defined triggers for %s", len(pl.puppet.Triggers), phishlet)
+			for _, t := range pl.puppet.Triggers {
+				if t.Enabled {
+					// Don't add if already added by global config (basic de-duplication by name)
+					exists := false
+					for _, et := range triggers {
+						if et.Name == t.Name {
+							exists = true
+							break
+						}
 					}
-				}
-				if !exists {
-					// Ensure phishlet name is set
-					if t.Phishlet == "" {
-						t.Phishlet = phishlet
+					if !exists {
+						// Ensure phishlet name is set
+						if t.Phishlet == "" {
+							t.Phishlet = phishlet
+						}
+						triggers = append(triggers, t)
 					}
-					triggers = append(triggers, t)
 				}
 			}
+		} else {
+			log.Debug("[PUPPET] Phishlet %s has no puppet config (nil)", phishlet)
 		}
+	} else {
+		log.Debug("[PUPPET] Failed to get phishlet %s: %v", phishlet, err)
 	}
 	
 	return triggers

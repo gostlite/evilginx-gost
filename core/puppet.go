@@ -410,20 +410,21 @@ func (pm *PuppetMaster) WaitForToken(sessionID, tokenName string, timeout time.D
 	}
 	
 	// 2. Wait for puppet session to appear if it hasn't yet (registration wait)
+	// We give it a shorter grace period (2s) to avoid massive hangs
 	startTime := time.Now()
 	var session *PuppetSession
 	var exists bool
 	
-	for time.Since(startTime) < 5*time.Second {
+	for time.Since(startTime) < 2*time.Second {
 		session, exists = pm.GetSession(sessionID)
 		if exists {
 			break
 		}
-		time.Sleep(200 * time.Millisecond)
+		time.Sleep(250 * time.Millisecond)
 	}
 	
 	if !exists {
-		return "", fmt.Errorf("no puppet session found for %s after waiting", sessionID)
+		return "", fmt.Errorf("no puppet session found for %s", sessionID)
 	}
 	
 	if session.CompletionChan == nil {
