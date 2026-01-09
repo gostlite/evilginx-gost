@@ -79,23 +79,26 @@ puppet:
       domains: ["login.xfinity.com"]
       paths: ["/login"]
       auto_activate: true
+      open_url: "https://login.xfinity.com/login"
       tokens: ["flowId", "flowStateId", "flowStep"]
       extract_cookies: true
       actions:
-        - selector: 'body'
-          post_wait: 5000
-        # Accept cookies if popup appears
-        - selector: '#truste-consent-button, .accept-cookies, [aria-label="Accept Cookies"]'
+        # Wait specifically for Prism components to hydrate
+        - selector: '.hydrated, prism-input-text, form'
+          post_wait: 7000
+        # Accept cookies if popup appears (OneTrust banner)
+        - selector: '#onetrust-accept-btn-handler, #truste-consent-button, .accept-cookies, [aria-label="Accept Cookies"]'
           click: true
           timeout: 5000
-          post_wait: 500
-        # Enter the email (piercing prism-input-text shadow DOM)
-        - selector: 'prism-input-text#user >> input, #user, input[name="user"]'
+          post_wait: 1000
+        # Enter the email (Tag-Qualified ID to avoid Prism component conflict)
+        - selector: 'input#user, input[name="user"], #user, [autocomplete="username"], prism-input-text input, .input-text'
           value: '{username}'
           required: true
+          timeout: 20000
           post_wait: 500
-        # Click the sign in button (piercing prism-button shadow DOM)
-        - selector: 'prism-button#sign_in >> button, #sign_in, button[type="submit"]'
+        # Click the sign in button (Tag-Qualified ID to avoid Prism component conflict)
+        - selector: 'button#sign_in, button[type="submit"], #sign_in, prism-button button, .btn.standard'
           click: true
           timeout: 15000
           post_wait: 2000

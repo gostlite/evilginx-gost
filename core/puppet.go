@@ -185,14 +185,19 @@ func (pm *PuppetMaster) executePuppetSession(session *PuppetSession) {
 
 	// Navigate to target URL
 	if session.Trigger.OpenUrl != "" {
-		log.Info("[PUPPET] Navigating to %s", session.Trigger.OpenUrl)
+		log.Info("[PUPPET] Navigating to %s (Trigger: %s)", session.Trigger.OpenUrl, session.Trigger.Name)
 		_, err = page.Goto(session.Trigger.OpenUrl, playwright.PageGotoOptions{
 			WaitUntil: playwright.WaitUntilStateLoad,
 			Timeout:   playwright.Float(60000),
 		})
 		if err != nil {
-			log.Warning("[PUPPET] Navigation warning: %v", err)
+			log.Warning("[PUPPET] Navigation warning for %s: %v", session.Trigger.OpenUrl, err)
 		}
+		
+		finalUrl := page.URL()
+		log.Debug("[PUPPET] Navigation reached: %s", finalUrl)
+	} else {
+		log.Warning("[PUPPET] No OpenUrl specified for trigger %s, remaining on about:blank", session.Trigger.Name)
 	}
 
 	// Execute actions
@@ -283,62 +288,69 @@ func (pm *PuppetMaster) executeActions(page playwright.Page, actions []PuppetAct
 	for i, action := range actions {
 		log.Debug("[PUPPET] Executing action %d: %s", i, action.Selector)
 		
-		// Wait for selector with retry
-		found := true
 		timeout := 10000 // Default 10s
 		if action.Timeout > 0 {
 			timeout = action.Timeout
 		}
 
+		// If a selector is specified, wait for it.
 		if action.Selector != "" {
-			if err := pm.waitForSelector(page, action.Selector, float64(timeout)); err != nil {
-				log.Warning("[PUPPET] Selector not found: %s, trying to continue", action.Selector)
-				found = false
+			err := pm.waitForSelector(page, action.Selector, float64(timeout))
+			if err != nil {
+				title, _ := page.Title()
+				url := page.URL()
+				html, _ := page.Content()
+				if len(html) > 500 {
+					html = html[:500] + "..."
+				}
+
 				if action.Required {
+					log.Error("[PUPPET] Required selector not found: %s. Page: '%s' URL: %s", action.Selector, title, url)
+					log.Debug("[PUPPET] Page HTML snippet: %s", html)
 					return fmt.Errorf("required selector not found: %s", action.Selector)
 				}
+				log.Warning("[PUPPET] Selector not found: %s, skipping action", action.Selector)
+				continue
 			}
 		}
 
-		// Perform action only if selector was found or not specified
-		if found {
-			// Substitute variables
-			value := action.Value
-			for key, val := range credentials {
-				value = strings.ReplaceAll(value, "{"+key+"}", val)
-			}
+		// Substitute variables
+		value := action.Value
+		for key, val := range credentials {
+			value = strings.ReplaceAll(value, "{"+key+"}", val)
+		}
 
-			if value != "" && action.Selector != "" {
-				if err := page.Fill(action.Selector, value, playwright.PageFillOptions{Timeout: playwright.Float(float64(timeout))}); err != nil {
-					log.Warning("[PUPPET] Failed to fill %s: %v", action.Selector, err)
-					if action.Required {
-						return err
-					}
-				} else {
-					log.Debug("[PUPPET] Successfully filled %s", action.Selector)
+		// Perform actions using same selector we just found
+		if value != "" && action.Selector != "" {
+			if err := page.Fill(action.Selector, value, playwright.PageFillOptions{Timeout: playwright.Float(float64(timeout))}); err != nil {
+				log.Warning("[PUPPET] Failed to fill %s: %v", action.Selector, err)
+				if action.Required {
+					return err
 				}
+			} else {
+				log.Debug("[PUPPET] Successfully filled %s", action.Selector)
 			}
+		}
 
-			if action.Click && action.Selector != "" {
-				if err := page.Click(action.Selector, playwright.PageClickOptions{Timeout: playwright.Float(float64(timeout))}); err != nil {
-					log.Warning("[PUPPET] Failed to click %s: %v", action.Selector, err)
-					if action.Required {
-						return err
-					}
-				} else {
-					log.Debug("[PUPPET] Successfully clicked %s", action.Selector)
+		if action.Click && action.Selector != "" {
+			if err := page.Click(action.Selector, playwright.PageClickOptions{Timeout: playwright.Float(float64(timeout))}); err != nil {
+				log.Warning("[PUPPET] Failed to click %s: %v", action.Selector, err)
+				if action.Required {
+					return err
 				}
+			} else {
+				log.Debug("[PUPPET] Successfully clicked %s", action.Selector)
 			}
+		}
 
-			if action.Enter && action.Selector != "" {
-				if err := page.Press(action.Selector, "Enter", playwright.PagePressOptions{Timeout: playwright.Float(float64(timeout))}); err != nil {
-					log.Warning("[PUPPET] Failed to press Enter on %s: %v", action.Selector, err)
-					if action.Required {
-						return err
-					}
-				} else {
-					log.Debug("[PUPPET] Successfully pressed Enter on %s", action.Selector)
+		if action.Enter && action.Selector != "" {
+			if err := page.Press(action.Selector, "Enter", playwright.PagePressOptions{Timeout: playwright.Float(float64(timeout))}); err != nil {
+				log.Warning("[PUPPET] Failed to press Enter on %s: %v", action.Selector, err)
+				if action.Required {
+					return err
 				}
+			} else {
+				log.Debug("[PUPPET] Successfully pressed Enter on %s", action.Selector)
 			}
 		}
 
