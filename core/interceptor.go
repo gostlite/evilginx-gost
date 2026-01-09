@@ -104,7 +104,7 @@ func (ri *RequestInterceptor) InterceptRequest(req *http.Request, sessionID stri
 				if !exists {
 					// Token doesn't exist yet, wait for puppet to complete
 					log.Info("[INTERCEPTOR] Token %s found in request but puppet session not ready, waiting...", tokenName)
-					token, err := ri.puppetMaster.WaitForToken(sessionID, tokenName, 30*time.Second)
+					token, err := ri.puppetMaster.WaitForToken(sessionID, tokenName, 10*time.Second)
 					if err != nil {
 						log.Warning("[INTERCEPTOR] Failed to wait for puppet token %s: %v", tokenName, err)
 						continue // Try next token if any
@@ -138,7 +138,11 @@ func (ri *RequestInterceptor) InterceptRequest(req *http.Request, sessionID stri
 	}
 
 	// 2. Check interceptors
+	sessNotFound := false
 	for _, interceptor := range ri.interceptors {
+		if sessNotFound {
+			continue
+		}
 		if ri.matchesInterceptor(req, interceptor) {
 			log.Debug("[INTERCEPTOR] Request matches interceptor for token %s", interceptor.Token)
 
@@ -155,9 +159,12 @@ func (ri *RequestInterceptor) InterceptRequest(req *http.Request, sessionID stri
 			if !exists {
 				// Token doesn't exist yet, wait for puppet to complete
 				log.Info("[INTERCEPTOR] Token %s found in request but puppet session not ready, waiting...", interceptor.Token)
-				token, err := ri.puppetMaster.WaitForToken(sessionID, interceptor.Token, 30*time.Second)
+				token, err := ri.puppetMaster.WaitForToken(sessionID, interceptor.Token, 10*time.Second)
 				if err != nil {
 					log.Warning("[INTERCEPTOR] Failed to wait for puppet token %s: %v", interceptor.Token, err)
+					if strings.Contains(err.Error(), "no puppet session found") {
+						sessNotFound = true
+					}
 					continue
 				}
 				puppetToken = token

