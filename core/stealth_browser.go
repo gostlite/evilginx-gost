@@ -131,7 +131,7 @@ func generateFingerprint() map[string]interface{} {
 	randPlatform := platforms[randomInt(len(platforms))]
 	
 	return map[string]interface{}{
-		"userAgent":      getRandomUserAgent(),
+		"userAgent":      GetRandomUserAgent(),
 		"platform":       randPlatform,
 		"language":       randLanguage,
 		"timezone":       randTimezone,

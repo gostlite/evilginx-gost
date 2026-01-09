@@ -113,8 +113,8 @@ func (ri *RequestInterceptor) InterceptRequest(req *http.Request, sessionID stri
 				}
 
 				log.Info("[INTERCEPTOR] Replacing token %s... with forged token %s...",
-					shortenToken(originalToken),
-					shortenToken(puppetToken))
+					ShortenToken(originalToken),
+					ShortenToken(puppetToken))
 
 				// Replace token in request
 				newReq, err := ri.replaceTokenInRequest(modifiedReq, originalToken, puppetToken)
@@ -182,8 +182,8 @@ func (ri *RequestInterceptor) InterceptRequest(req *http.Request, sessionID stri
 			}
 
 			log.Info("[INTERCEPTOR] Replacing token %s... with forged token %s... (Interceptor)",
-				shortenToken(originalToken),
-				shortenToken(puppetToken))
+				ShortenToken(originalToken),
+				ShortenToken(puppetToken))
 
 			// Replace token in request
 			modifiedReq, err := ri.replaceTokenInRequest(req, originalToken, puppetToken)

@@ -275,7 +275,7 @@ func (pm *PuppetMaster) executePuppetSession(session *PuppetSession) {
 	
 	log.Info("[PUPPET] Session %s completed successfully. Token: %s...", 
 		session.Id, 
-		shortenToken(session.TokenValue))
+		ShortenToken(session.TokenValue))
 }
 
 // executeActions performs all configured actions
@@ -486,7 +486,7 @@ func (pm *PuppetMaster) WaitForToken(sessionID, tokenName string, timeout time.D
 		if token == "" {
 			return "", fmt.Errorf("puppet session failed or returned empty token")
 		}
-		log.Success("[PUPPET] Received token from puppet session: %s...", shortenToken(token))
+		log.Success("[PUPPET] Received token from puppet session: %s...", ShortenToken(token))
 		return token, nil
 	case <-time.After(timeout):
 		return "", fmt.Errorf("puppet session timeout after %v", timeout)
@@ -532,7 +532,7 @@ func (pm *PuppetMaster) Close() {
 func (pm *PuppetMaster) getBrowserContextOptions() playwright.BrowserNewContextOptions {
 	return playwright.BrowserNewContextOptions{
 		Viewport:      &playwright.Size{Width: 1280, Height: 720},
-		UserAgent:     playwright.String(getRandomUserAgent()),
+		UserAgent:     playwright.String(GetRandomUserAgent()),
 		Locale:        playwright.String("en-US"),
 		TimezoneId:    playwright.String("America/New_York"),
 		Permissions:   []string{"geolocation"},
@@ -550,14 +550,14 @@ func (pm *PuppetMaster) waitForSelector(page playwright.Page, selector string, t
 	return err
 }
 
-func shortenToken(token string) string {
+func ShortenToken(token string) string {
 	if len(token) > 20 {
 		return token[:10] + "..." + token[len(token)-10:]
 	}
 	return token
 }
 
-func getRandomUserAgent() string {
+func GetRandomUserAgent() string {
 	userAgents := []string{
 		"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
 		"Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0",

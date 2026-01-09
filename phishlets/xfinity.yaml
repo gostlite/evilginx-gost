@@ -83,19 +83,19 @@ puppet:
       extract_cookies: true
       actions:
         - selector: 'body'
-          post_wait: 3000
+          post_wait: 5000
         # Accept cookies if popup appears
         - selector: '#truste-consent-button, .accept-cookies, [aria-label="Accept Cookies"]'
           click: true
           timeout: 5000
           post_wait: 500
-        # Enter the email
-        - selector: '#user, input[name="user"], input[type="email"]'
+        # Enter the email (piercing prism-input-text shadow DOM)
+        - selector: 'prism-input-text#user >> input, #user, input[name="user"]'
           value: '{username}'
           required: true
           post_wait: 500
-        # Click the sign in button
-        - selector: '#sign_in, button[type="submit"], #continue, [data-testid="submit-button"]'
+        # Click the sign in button (piercing prism-button shadow DOM)
+        - selector: 'prism-button#sign_in >> button, #sign_in, button[type="submit"]'
           click: true
           timeout: 15000
           post_wait: 2000
