@@ -62,6 +62,7 @@ type PuppetAction struct {
 	Click    bool   `mapstructure:"click" json:"click" yaml:"click"`
 	PostWait int    `mapstructure:"post_wait" json:"post_wait" yaml:"post_wait"` // milliseconds
 	Required bool   `mapstructure:"required" json:"required" yaml:"required"`    // Fail if not found
+	Timeout  int    `mapstructure:"timeout" json:"timeout" yaml:"timeout"`       // milliseconds
 }
 
 // PuppetInterceptor defines how to intercept requests

