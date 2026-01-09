@@ -32,7 +32,7 @@ login:
 # This section configures automated browser sessions
 # for solving CAPTCHAs and forging tokens
 
-evilpuppet:
+puppet:
   # TRIGGERS: Define when to spawn a puppet session
   triggers:
     # Trigger 1: reCAPTCHA on login page
