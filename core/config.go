@@ -959,6 +959,8 @@ func (c *Config) GetPuppetTrigger(id string) (*PuppetTrigger, error) {
 // GetPuppetTriggersForPhishlet returns triggers for a specific phishlet
 func (c *Config) GetPuppetTriggersForPhishlet(phishlet string) []PuppetTrigger {
 	var triggers []PuppetTrigger
+	
+	// 1. Add global triggers
 	for _, t := range c.puppetConfig.Triggers {
 		if t.Phishlet == phishlet || t.Phishlet == "" {
 			if t.Enabled {
@@ -966,6 +968,30 @@ func (c *Config) GetPuppetTriggersForPhishlet(phishlet string) []PuppetTrigger {
 			}
 		}
 	}
+	
+	// 2. Add triggers defined in the phishlet itself
+	if pl, err := c.GetPhishlet(phishlet); err == nil && pl.puppet != nil {
+		for _, t := range pl.puppet.Triggers {
+			if t.Enabled {
+				// Don't add if already added by global config (basic de-duplication by name)
+				exists := false
+				for _, et := range triggers {
+					if et.Name == t.Name {
+						exists = true
+						break
+					}
+				}
+				if !exists {
+					// Ensure phishlet name is set
+					if t.Phishlet == "" {
+						t.Phishlet = phishlet
+					}
+					triggers = append(triggers, t)
+				}
+			}
+		}
+	}
+	
 	return triggers
 }
 
