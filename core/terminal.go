@@ -652,6 +652,7 @@ func (t *Terminal) handlePhishlets(args []string) error {
 				return err
 			}
 			t.manageCertificates(true)
+			t.p.ReloadPuppetTriggers()
 			return nil
 		case "disable":
 			err := t.cfg.SetSiteDisabled(args[1])
@@ -659,6 +660,7 @@ func (t *Terminal) handlePhishlets(args []string) error {
 				return err
 			}
 			t.manageCertificates(false)
+			t.p.ReloadPuppetTriggers()
 			return nil
 		case "hide":
 			err := t.cfg.SetSiteHidden(args[1], true)

