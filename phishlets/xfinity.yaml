@@ -91,17 +91,12 @@ puppet:
           click: true
           timeout: 5000
           post_wait: 1000
-        # Enter the email (Tag-Qualified ID to avoid Prism component conflict)
+        # Enter the email and press Enter (more reliable than clicking)
         - selector: 'input#user'
           value: '{username}'
           required: true
+          enter: true
           timeout: 20000
-          post_wait: 500
-        # Click the sign in button
-        - selector: '#sign_in'
-          click: true
-          required: true
-          timeout: 15000
           post_wait: 2000
         # Wait for password field to ensure we are on the next page
         - selector: '#passwd'
