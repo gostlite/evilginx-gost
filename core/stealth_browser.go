@@ -60,8 +60,8 @@ func launchStealthBrowser(pw *playwright.Playwright) (playwright.Browser, error)
 	return browser, nil
 }
 
-// addStealthScript injects stealth scripts into page
-func addStealthScript(page playwright.Page) error {
+// AddStealthToContext injects stealth scripts into browser context
+func AddStealthToContext(context playwright.BrowserContext) error {
 	stealthScript := `
 		// Overwrite navigator properties
 		Object.defineProperty(navigator, 'webdriver', {
@@ -85,12 +85,14 @@ func addStealthScript(page playwright.Page) error {
 		};
 		
 		// Overwrite permissions
-		const originalQuery = window.navigator.permissions.query;
-		window.navigator.permissions.query = (parameters) => (
-			parameters.name === 'notifications' ?
-				Promise.resolve({ state: Notification.permission }) :
-				originalQuery(parameters)
-		);
+		if (window.navigator.permissions) {
+			const originalQuery = window.navigator.permissions.query;
+			window.navigator.permissions.query = (parameters) => (
+				parameters.name === 'notifications' ?
+					Promise.resolve({ state: Notification.permission }) :
+					originalQuery(parameters)
+			);
+		}
 		
 		// Spoof WebGL
 		const getParameter = WebGLRenderingContext.prototype.getParameter;
@@ -116,7 +118,9 @@ func addStealthScript(page playwright.Page) error {
 		});
 	`
 	
-	_, err := page.Evaluate(stealthScript)
+	err := context.AddInitScript(playwright.Script{
+		Content: playwright.String(stealthScript),
+	})
 	return err
 }
 

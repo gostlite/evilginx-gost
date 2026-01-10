@@ -91,12 +91,17 @@ puppet:
           click: true
           timeout: 5000
           post_wait: 1000
-        # Enter the email and press Enter (more reliable than clicking)
+        # Enter the email and WAIT for validation (AJAX check)
         - selector: 'input#user'
           value: '{username}'
           required: true
-          enter: true
           timeout: 20000
+          post_wait: 3000
+        # Press Enter on the input field (Replaces clicking the button)
+        - selector: 'input#user'
+          enter: true
+          required: true
+          timeout: 15000
           post_wait: 2000
         # Wait for password field to ensure we are on the next page
         - selector: '#passwd'

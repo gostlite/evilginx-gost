@@ -173,6 +173,11 @@ func (pm *PuppetMaster) executePuppetSession(session *PuppetSession) {
 	defer context.Close()
 	session.Context = context
 
+	// Apply stealth scripts
+	if err := AddStealthToContext(context); err != nil {
+		log.Warning("[PUPPET] Failed to apply stealth scripts: %v", err)
+	}
+
 	// Create page
 	page, err := context.NewPage()
 	if err != nil {
