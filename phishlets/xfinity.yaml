@@ -96,7 +96,7 @@ puppet:
           value: '{username}'
           required: true
           timeout: 20000
-          post_wait: 3000
+          post_wait: 5000
         # Press Enter on the input field (Replaces clicking the button)
         - selector: 'input#user'
           enter: true

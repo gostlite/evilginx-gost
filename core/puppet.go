@@ -408,8 +408,9 @@ func (pm *PuppetMaster) detectAndSolveCaptcha(page playwright.Page, trigger *Pup
 // extractTokenFromPage extracts token from page after submission
 func (pm *PuppetMaster) extractTokenFromPage(page playwright.Page, tokenName string) (string, error) {
 	// Method 1: Look for hidden input fields
-	// Method 1: Look for hidden input fields with matching name or ID
-	selector := fmt.Sprintf("input[name*='%s'], input[id*='%s']", 
+	// Method 1: Look for hidden input fields with exact name/id OR case-insensitive match
+	selector := fmt.Sprintf("input[name='%s'], input[id='%s'], input[name*='%s'], input[id*='%s']", 
+		tokenName, tokenName,
 		strings.ToLower(tokenName), 
 		strings.ToLower(tokenName))
 	
