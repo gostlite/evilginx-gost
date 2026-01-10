@@ -103,6 +103,11 @@ puppet:
           required: true
           timeout: 15000
           post_wait: 2000
+        # Wait for password field to ensure we are on the next page
+        - selector: '#passwd'
+          post_wait: 1000
+          required: true
+          timeout: 15000
 
   interceptors:
     - token: 'flowId'
