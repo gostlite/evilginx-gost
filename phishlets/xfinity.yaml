@@ -91,6 +91,10 @@ puppet:
           click: true
           timeout: 5000
           post_wait: 1000
+        # Click to focus the input first
+        - selector: 'input#user'
+          click: true
+          post_wait: 500
         # Enter the email and WAIT for validation (AJAX check)
         - selector: 'input#user'
           value: '{username}'

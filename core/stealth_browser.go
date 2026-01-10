@@ -20,8 +20,9 @@ func launchStealthBrowser(pw *playwright.Playwright) (playwright.Browser, error)
 	
 	// Browser launch options with stealth settings
 	opts := playwright.BrowserTypeLaunchOptions{
-		Headless: playwright.Bool(true), // Always headless for production
+		Headless: playwright.Bool(false), // Controlled via args for stealth
 		Args: []string{
+			"--headless=new",
 			"--no-sandbox",
 			"--disable-setuid-sandbox",
 			"--disable-dev-shm-usage",
