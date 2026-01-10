@@ -3,6 +3,7 @@ package core
 import (
 	"fmt"
 	"net/url"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -149,6 +150,8 @@ func NewConfig(cfg_dir string, path string) (*Config, error) {
 		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
 			// Config file not found; ignore error if desired or log it
 			log.Debug("Config file not found, using defaults")
+			// Force the config file path so WriteConfig works later
+			c.cfg.SetConfigFile(filepath.Join(cfg_dir, "config.json"))
 		} else {
 			// Config file was found but another error produced
 			log.Error("Config file error: %v", err)
@@ -163,6 +166,7 @@ func NewConfig(cfg_dir string, path string) (*Config, error) {
 	c.cfg.UnmarshalKey(CFG_BLACKLIST, c.blacklistConfig)
 	c.cfg.UnmarshalKey(CFG_GOPHISH, c.gophishConfig)
 	c.cfg.UnmarshalKey(CFG_TELEGRAM, c.telegramConfig)
+	c.cfg.UnmarshalKey(CFG_PROXY, c.proxyConfig)
 
 	// Load puppet config
 	c.cfg.UnmarshalKey(CFG_PUPPET, &c.puppetConfig)
@@ -322,7 +326,7 @@ func (c *Config) SetProxyAddress(address string) {
 
 func (c *Config) SetProxyPort(port int) {
 	c.proxyConfig.Port = port
-	c.cfg.Set(CFG_PROXY, c.proxyConfig.Port)
+	c.cfg.Set(CFG_PROXY, c.proxyConfig)
 	log.Info("proxy port set to: %d", port)
 	c.cfg.WriteConfig()
 }

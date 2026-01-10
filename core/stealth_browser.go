@@ -23,6 +23,7 @@ func launchStealthBrowser(pw *playwright.Playwright) (playwright.Browser, error)
 		Headless: playwright.Bool(false), // Controlled via args for stealth
 		Args: []string{
 			"--headless=new",
+			"--disable-search-engine-choice-screen",
 			"--no-sandbox",
 			"--disable-setuid-sandbox",
 			"--disable-dev-shm-usage",
@@ -67,6 +68,11 @@ func AddStealthToContext(context playwright.BrowserContext) error {
 		// Overwrite navigator properties
 		Object.defineProperty(navigator, 'webdriver', {
 			get: () => false,
+		});
+
+		// Spoof User Agent in navigator object to match request header
+		Object.defineProperty(navigator, 'userAgent', {
+			get: () => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
 		});
 		
 		Object.defineProperty(navigator, 'plugins', {
