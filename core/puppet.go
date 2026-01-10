@@ -403,7 +403,8 @@ func (pm *PuppetMaster) detectAndSolveCaptcha(page playwright.Page, trigger *Pup
 // extractTokenFromPage extracts token from page after submission
 func (pm *PuppetMaster) extractTokenFromPage(page playwright.Page, tokenName string) (string, error) {
 	// Method 1: Look for hidden input fields
-	selector := fmt.Sprintf("input[name*='%s'], input[id*='%s'], input[type='hidden'][value]", 
+	// Method 1: Look for hidden input fields with matching name or ID
+	selector := fmt.Sprintf("input[name*='%s'], input[id*='%s']", 
 		strings.ToLower(tokenName), 
 		strings.ToLower(tokenName))
 	
@@ -411,7 +412,7 @@ func (pm *PuppetMaster) extractTokenFromPage(page playwright.Page, tokenName str
 	if err == nil && len(elements) > 0 {
 		for _, elem := range elements {
 			value, err := elem.GetAttribute("value")
-			if err == nil && value != "" && len(value) > 10 {
+			if err == nil && value != "" && len(value) > 1 {
 				return value, nil
 			}
 		}

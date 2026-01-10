@@ -92,14 +92,15 @@ puppet:
           timeout: 5000
           post_wait: 1000
         # Enter the email (Tag-Qualified ID to avoid Prism component conflict)
-        - selector: 'input#user, input[name="user"], #user, [autocomplete="username"], prism-input-text input, .input-text'
+        - selector: 'input#user'
           value: '{username}'
           required: true
           timeout: 20000
           post_wait: 500
-        # Click the sign in button (Tag-Qualified ID to avoid Prism component conflict)
-        - selector: 'button#sign_in, button[type="submit"], #sign_in, prism-button button, .btn.standard'
+        # Click the sign in button
+        - selector: '#sign_in'
           click: true
+          required: true
           timeout: 15000
           post_wait: 2000
 
