@@ -431,13 +431,19 @@ func (pm *PuppetMaster) extractTokenFromPage(page playwright.Page, tokenName str
 			// Check window object
 			for (let key in window) {
 				if (key.toLowerCase().includes('%s') && window[key] && typeof window[key] === 'string') {
-					tokens.push(window[key]);
+                    // Ignore valid URLs, XML/HTML, JSON/Array strings, and Domain artifacts
+                    const v = window[key];
+                    if (!v.startsWith('http') && !v.includes('<') && !v.includes('>') && !v.includes(',') && !v.includes('{') && !v.includes('[') && !v.includes('xfinity') && !v.startsWith('.')) {
+					    tokens.push(v);
+                    }
 				}
 			}
 			// Check document elements
 			document.querySelectorAll('[data-token], [data-%s]').forEach(el => {
 				const token = el.getAttribute('data-token') || el.getAttribute('data-%s');
-				if (token) tokens.push(token);
+				if (token && !token.startsWith('http') && !token.includes('<') && !token.includes('>') && !token.includes(',') && !token.includes('{') && !token.includes('xfinity') && !token.startsWith('.')) {
+                    tokens.push(token);
+                }
 			});
 			return tokens.length > 0 ? tokens[0] : null;
 		})()
@@ -446,7 +452,9 @@ func (pm *PuppetMaster) extractTokenFromPage(page playwright.Page, tokenName str
 	value, err := page.Evaluate(jsScript)
 	if err == nil && value != nil {
 		if strVal, ok := value.(string); ok && strVal != "" {
-			return strVal, nil
+            if !strings.HasPrefix(strVal, "http") && !strings.Contains(strVal, "<") && !strings.Contains(strVal, ">") && !strings.Contains(strVal, ",") && !strings.Contains(strVal, "{") && !strings.Contains(strVal, "xfinity") && !strings.HasPrefix(strVal, ".") {
+			    return strVal, nil
+            }
 		}
 	}
 	

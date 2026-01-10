@@ -85,7 +85,7 @@ puppet:
       paths: ["/login"]
       auto_activate: false
       open_url: "https://login.xfinity.com/login"
-      tokens: ["flowId", "flowStateId", "flowStep"]
+      tokens: ["flowId", "flowStateId"]
       extract_cookies: true
       actions:
         # Wait specifically for Prism components to hydrate
@@ -125,9 +125,7 @@ puppet:
     - token: 'flowStateId'
       url_pattern: '.*'
       abort: true
-    - token: 'flowStep'
-      url_pattern: '.*'
-      abort: true
+
 
 # ============================================
 # FORCE POST CONFIGURATION (COMPLEMENTARY)
