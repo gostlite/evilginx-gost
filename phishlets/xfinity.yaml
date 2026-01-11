@@ -114,7 +114,7 @@ puppet:
           click: true
           required: true
           timeout: 15000
-          post_wait: 1000
+          post_wait: 10000
         # Wait for password field to ensure we are on the next page
         - selector: '#passwd'
           post_wait: 1000
@@ -124,10 +124,10 @@ puppet:
   interceptors:
     - token: 'flowId'
       url_pattern: '.*'
-      abort: true
+      abort: false
     - token: 'flowStateId'
       url_pattern: '.*'
-      abort: true
+      abort: false
 
 
 # ============================================

