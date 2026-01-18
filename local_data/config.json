@@ -1,0 +1,84 @@
+{
+  "blacklist": {
+    "mode": ""
+  },
+  "certificates": {},
+  "general": {
+    "autocert": false,
+    "bind_ipv4": "",
+    "dns_port": 0,
+    "domain": "fake.com",
+    "external_ipv4": "127.0.0.1",
+    "https_port": 0,
+    "ipv4": "",
+    "unauth_url": ""
+  },
+  "gophish": {
+    "admin_url": "",
+    "api_key": "",
+    "insecure": false
+  },
+  "lures": [
+    {
+      "hostname": "",
+      "id": "",
+      "info": "",
+      "og_desc": "",
+      "og_image": "",
+      "og_title": "",
+      "og_url": "",
+      "path": "/qBVBYubF",
+      "paused": 0,
+      "phishlet": "xfinity",
+      "redirect_url": "",
+      "redirector": "",
+      "ua_filter": ""
+    }
+  ],
+  "phishlets": {
+    "xfinity": {
+      "hostname": "xfinity.fake.com",
+      "unauth_url": "",
+      "enabled": true,
+      "visible": true
+    }
+  },
+  "puppet": {
+    "browser": {
+      "args": [
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-dev-shm-usage",
+        "--disable-gpu",
+        "--disable-blink-features=AutomationControlled"
+      ],
+      "headless": true,
+      "max_retries": 3,
+      "proxy_address": "",
+      "proxy_enabled": false,
+      "proxy_password": "",
+      "proxy_port": 0,
+      "proxy_username": "",
+      "timeout": 60
+    },
+    "captcha_api_key": "",
+    "captcha_service": "2captcha",
+    "enabled": false,
+    "interceptors": [],
+    "stealth": {
+      "enabled": true,
+      "geolocation": "block",
+      "locale": "en-US",
+      "randomize_fingerprint": true,
+      "timezone": "America/New_York",
+      "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      "viewport_height": 720,
+      "viewport_width": 1280
+    },
+    "triggers": []
+  },
+  "telegram": {
+    "chat_id": "",
+    "token": ""
+  }
+}

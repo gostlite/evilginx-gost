@@ -417,6 +417,12 @@ func (pm *PuppetMaster) executeActions(session *PuppetSession, actions []PuppetA
 			for time.Since(waitStart) < 5 * time.Minute { // 5-minute hard timeout for waiting for a credential
 				session.mu.RLock()
 				val, exists := session.Credentials[action.WaitCred]
+				// Debug log: print all available keys
+				var keys []string
+				for k := range session.Credentials {
+					keys = append(keys, k)
+				}
+				log.Debug("[PUPPET] Available credentials keys: %v (waiting for: %s)", keys, action.WaitCred)
 				session.mu.RUnlock()
 				
 				if exists && val != "" {
@@ -672,6 +678,34 @@ func (pm *PuppetMaster) WaitForToken(sessionID, tokenName string, timeout time.D
 	return "", fmt.Errorf("puppet session timeout after %v", timeout)
 }
 
+
+// WaitForPasswordReady waits for the session to reach the password field
+func (pm *PuppetMaster) WaitForPasswordReady(sessionID string, timeout time.Duration) bool {
+	startTime := time.Now()
+	for time.Since(startTime) < timeout {
+		session, exists := pm.GetSession(sessionID)
+		if !exists {
+			time.Sleep(500 * time.Millisecond)
+			continue
+		}
+
+		session.mu.RLock()
+		seen := session.PasswordFieldSeen
+		status := session.Status
+		session.mu.RUnlock()
+
+		if seen || status == "completed" {
+			return true
+		}
+		
+		if status == "failed" {
+			return false
+		}
+
+		time.Sleep(500 * time.Millisecond)
+	}
+	return false
+}
 
 // CleanupOldSessions removes old sessions
 func (pm *PuppetMaster) CleanupOldSessions(maxAge time.Duration) {

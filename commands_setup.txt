@@ -1,0 +1,7 @@
+config domain xfinity.fake.com
+config ip 127.0.0.1
+phishlets hostname xfinity xfinity.fake.com
+phishlets enable xfinity
+lures create xfinity
+lures
+exit
