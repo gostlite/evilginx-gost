@@ -1,0 +1,15 @@
+; Blocklist for Evilginx2
+; Add IPs (e.g. 1.2.3.4) or CIDR ranges (e.g. 1.2.3.0/24) to block.
+; Comments start with semicolon.
+
+; Example: Block Localhost (for testing)
+; 127.0.0.1
+
+; Example: Block a specific scanner IP
+; 192.168.1.100
+
+; Google Cloud (Example Range - BE CAREFUL blocking major clouds as they host real users too)
+; 35.190.0.0/17
+
+; Microsoft Azure (Example Range)
+; 13.64.0.0/11
