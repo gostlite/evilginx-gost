@@ -2,6 +2,7 @@ package core
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
 	"net"
 	"os"
@@ -38,13 +39,22 @@ func NewBlacklist(path string) (*Blacklist, error) {
 	fs := bufio.NewScanner(f)
 	fs.Split(bufio.ScanLines)
 
+	// check for UTF-8 BOM
+	bom := []byte{0xef, 0xbb, 0xbf}
+
 	for fs.Scan() {
 		l := fs.Text()
+
+		// remove BOM from the first line
+		if bytes.HasPrefix([]byte(l), bom) {
+			l = string([]byte(l)[len(bom):])
+		}
+
 		// remove comments
 		if n := strings.Index(l, ";"); n > -1 {
 			l = l[:n]
 		}
-		l = strings.Trim(l, " ")
+		l = strings.TrimSpace(l)
 
 		if len(l) > 0 {
 			if strings.Contains(l, "/") {
