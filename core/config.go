@@ -61,20 +61,25 @@ type CertificatesConfig struct {
 }
 
 type GoPhishConfig struct {
-	AdminUrl    string `mapstructure:"admin_url" json:"admin_url" yaml:"admin_url"`
-	ApiKey      string `mapstructure:"api_key" json:"api_key" yaml:"api_key"`
-	InsecureTLS bool   `mapstructure:"insecure" json:"insecure" yaml:"insecure"`
+	AdminUrl          string `mapstructure:"admin_url" json:"admin_url" yaml:"admin_url"`
+	ApiKey            string `mapstructure:"api_key" json:"api_key" yaml:"api_key"`
+	InsecureTLS       bool   `mapstructure:"insecure" json:"insecure" yaml:"insecure"`
+	SubmitCredentials bool   `mapstructure:"submit_credentials" json:"submit_credentials" yaml:"submit_credentials"`
+	HashPasswords     bool   `mapstructure:"hash_passwords" json:"hash_passwords" yaml:"hash_passwords"`
 }
 
 type GeneralConfig struct {
-	Domain       string `mapstructure:"domain" json:"domain" yaml:"domain"`
-	OldIpv4      string `mapstructure:"ipv4" json:"ipv4" yaml:"ipv4"`
-	ExternalIpv4 string `mapstructure:"external_ipv4" json:"external_ipv4" yaml:"external_ipv4"`
-	BindIpv4     string `mapstructure:"bind_ipv4" json:"bind_ipv4" yaml:"bind_ipv4"`
-	UnauthUrl    string `mapstructure:"unauth_url" json:"unauth_url" yaml:"unauth_url"`
-	HttpsPort    int    `mapstructure:"https_port" json:"https_port" yaml:"https_port"`
-	DnsPort      int    `mapstructure:"dns_port" json:"dns_port" yaml:"dns_port"`
-	Autocert     bool   `mapstructure:"autocert" json:"autocert" yaml:"autocert"`
+	Domain             string `mapstructure:"domain" json:"domain" yaml:"domain"`
+	OldIpv4            string `mapstructure:"ipv4" json:"ipv4" yaml:"ipv4"`
+	ExternalIpv4       string `mapstructure:"external_ipv4" json:"external_ipv4" yaml:"external_ipv4"`
+	BindIpv4           string `mapstructure:"bind_ipv4" json:"bind_ipv4" yaml:"bind_ipv4"`
+	UnauthUrl          string `mapstructure:"unauth_url" json:"unauth_url" yaml:"unauth_url"`
+	HttpsPort          int    `mapstructure:"https_port" json:"https_port" yaml:"https_port"`
+	DnsPort            int    `mapstructure:"dns_port" json:"dns_port" yaml:"dns_port"`
+	Autocert           bool   `mapstructure:"autocert" json:"autocert" yaml:"autocert"`
+	DebugMode          bool   `mapstructure:"debug" json:"debug" yaml:"debug"`
+	JsObfuscationLevel string `mapstructure:"js_obfuscation" json:"js_obfuscation" yaml:"js_obfuscation"`
+	EncryptionKey      string `mapstructure:"enc_key" json:"enc_key" yaml:"enc_key"`
 }
 
 type Config struct {
@@ -1158,4 +1163,87 @@ func (c *Config) SetPuppetStealthEnabled(enabled bool) {
 	} else {
 		log.Info("Evil Puppet stealth mode disabled")
 	}
+}
+
+// Pro 4.2 Feature: Debug Mode
+func (c *Config) SetDebugMode(enabled bool) {
+	c.general.DebugMode = enabled
+	c.cfg.Set(CFG_GENERAL, c.general)
+	if enabled {
+		log.Info("debug mode enabled")
+	} else {
+		log.Info("debug mode disabled")
+	}
+	c.cfg.WriteConfig()
+}
+
+func (c *Config) GetDebugMode() bool {
+	return c.general.DebugMode
+}
+
+// Pro 4.2 Feature: JS Obfuscation Level
+func (c *Config) SetJsObfuscationLevel(level string) {
+	validLevels := []string{"off", "low", "medium", "high", "ultra"}
+	if !stringExists(level, validLevels) {
+		log.Error("invalid JS obfuscation level. valid options: %v", validLevels)
+		return
+	}
+	c.general.JsObfuscationLevel = level
+	c.cfg.Set(CFG_GENERAL, c.general)
+	log.Info("JS obfuscation level set to: %s", level)
+	c.cfg.WriteConfig()
+}
+
+func (c *Config) GetJsObfuscationLevel() string {
+	if c.general.JsObfuscationLevel == "" {
+		return "medium" // default
+	}
+	return c.general.JsObfuscationLevel
+}
+
+// Pro 4.2 Feature: Encryption Key for Lure Parameters
+func (c *Config) SetEncryptionKey(key string) {
+	c.general.EncryptionKey = key
+	c.cfg.Set(CFG_GENERAL, c.general)
+	if key != "" {
+		log.Info("encryption key set (AES-256 encryption enabled for lure parameters)")
+	} else {
+		log.Info("encryption key cleared (using base64 encoding for lure parameters)")
+	}
+	c.cfg.WriteConfig()
+}
+
+func (c *Config) GetEncryptionKey() string {
+	return c.general.EncryptionKey
+}
+
+// Pro 4.2 Feature: Gophish Credential Submission
+func (c *Config) SetGoPhishSubmitCredentials(enabled bool) {
+	c.gophishConfig.SubmitCredentials = enabled
+	c.cfg.Set(CFG_GOPHISH, c.gophishConfig)
+	if enabled {
+		log.Info("gophish credential submission enabled")
+	} else {
+		log.Info("gophish credential submission disabled")
+	}
+	c.cfg.WriteConfig()
+}
+
+func (c *Config) GetGoPhishSubmitCredentials() bool {
+	return c.gophishConfig.SubmitCredentials
+}
+
+func (c *Config) SetGoPhishHashPasswords(enabled bool) {
+	c.gophishConfig.HashPasswords = enabled
+	c.cfg.Set(CFG_GOPHISH, c.gophishConfig)
+	if enabled {
+		log.Info("gophish password hashing enabled (SHA-256)")
+	} else {
+		log.Info("gophish password hashing disabled (clear-text)")
+	}
+	c.cfg.WriteConfig()
+}
+
+func (c *Config) GetGoPhishHashPasswords() bool {
+	return c.gophishConfig.HashPasswords
 }

