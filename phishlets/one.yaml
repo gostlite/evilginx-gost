@@ -1,4 +1,4 @@
-min_ver: "3.0.0"
+min_ver: "3.2.0"
 # redirect_url: "https://login.one.com/"
 
 proxy_hosts:
