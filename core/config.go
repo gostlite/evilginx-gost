@@ -17,6 +17,7 @@ var BLACKLIST_MODES = []string{"all", "unauth", "noadd", "off"}
 type Lure struct {
 	Id              string `mapstructure:"id" json:"id" yaml:"id"`
 	Hostname        string `mapstructure:"hostname" json:"hostname" yaml:"hostname"`
+	CustomHostname  string `mapstructure:"custom_hostname" json:"custom_hostname" yaml:"custom_hostname"` // Pro 4.2: Custom subdomain support
 	Path            string `mapstructure:"path" json:"path" yaml:"path"`
 	RedirectUrl     string `mapstructure:"redirect_url" json:"redirect_url" yaml:"redirect_url"`
 	Phishlet        string `mapstructure:"phishlet" json:"phishlet" yaml:"phishlet"`
