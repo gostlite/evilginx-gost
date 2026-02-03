@@ -860,7 +860,12 @@ func (p *Phishlet) GetScriptInject(hostname string, path string, params *map[str
 							script = strings.Replace(script, "{"+k+"}", v, -1)
 						}
 					}
-					return js.id, script, nil
+					// Return location field (default to body_bottom if not set)
+					location := js.location
+					if location == "" {
+						location = "body_bottom"
+					}
+					return js.id, location, nil
 				}
 			}
 		}
