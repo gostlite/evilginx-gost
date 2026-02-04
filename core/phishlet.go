@@ -567,9 +567,12 @@ func (p *Phishlet) LoadFromFile(site string, path string, customParams *map[stri
 					if q.Key == nil || q.Value == nil {
 						return fmt.Errorf("rewrite_urls: query must have both `key` and `value` fields")
 					}
+					// Pro 4.2 update: We allow static values or other placeholders now, so we don't enforce {id}
+					/*
 					if !strings.Contains(*q.Value, "{id}") {
 						return fmt.Errorf("rewrite_urls: query value must contain {id} placeholder: %s", *q.Value)
 					}
+					*/
 				}
 			}
 

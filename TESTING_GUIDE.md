@@ -434,6 +434,81 @@ rewrite_urls:
 
 ---
 
+## Test 11: Custom Lure Hostnames
+### Objective
+Verify that custom lure hostnames work correctly.
+
+### Steps
+1. Configure a phishlet (e.g. `test-phishlet`) on `example.com`:
+   ```bash
+   phishlets hostname test-phishlet auth.example.com
+   ```
+
+2. Create a lure with a custom subdomain:
+   ```bash
+   lures create test-phishlet /login --hostname login.example.com
+   ```
+   *Should success: `login.example.com` has same base as `auth.example.com`*
+
+3. Create a lure with TLD-only hostname:
+   ```bash
+   lures create test-phishlet /verify --hostname example.com
+   ```
+   *Should success*
+
+4. Attempt to create invalid lure:
+   ```bash
+   lures create test-phishlet /fail --hostname google.com
+   ```
+   *Should fail: Different base domain*
+
+5. Get generated URLs:
+   ```bash
+   lures get-url 0
+   ```
+   *Verify URL matches: `https://login.example.com/login`*
+
+### Expected Results
+✅ Valid custom hostnames are accepted
+✅ Invalid hostnames are rejected
+✅ Generated URLs reflect the custom hostname
+
+---
+
+## Test 12: URL Rewriting (Functional)
+### Objective
+Verify that URL rewriting logic correctly modifies requests and responses.
+
+### Test Phishlet Configuration
+Add this to your test phishlet yaml:
+```yaml
+rewrite_urls:
+  - trigger:
+      domains: ['auth.example.com']
+      paths: ['^/secure/verify$']
+    rewrite:
+      path: '/auth/login'
+      query:
+         - key: 'token'
+           value: '123'
+```
+
+### Steps
+1. Enable phishlet on `auth.example.com`.
+2. Visit `https://auth.example.com/secure/verify`
+3. Check `debug` logs.
+   *   Should see: `rewrite_url: matched trigger...`
+   *   Should see: `rewrite_url: rewriting /secure/verify -> /auth/login`
+4. The server receives request for `/auth/login`.
+5. If server redirects back to `/auth/login`, verifying that the proxy rewrites `Location` header back to `/secure/verify`.
+
+### Expected Results
+✅ Request to `/secure/verify` is internally processed as `/auth/login`
+✅ User stays on `/secure/verify` URL in browser
+✅ Redirects are mapped back correctly
+
+---
+
 ## Summary Checklist
 
 After completing all tests, verify:
@@ -449,6 +524,8 @@ After completing all tests, verify:
 - [ ] Build completes successfully
 - [ ] Configuration persists across restarts
 - [ ] URL rewriting structures load correctly
+- [ ] Custom Lure Hostnames work
+- [ ] URL Rewriting functional logic works
 
 ---
 

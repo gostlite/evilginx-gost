@@ -1,0 +1,66 @@
+{
+  "blacklist": {
+    "mode": ""
+  },
+  "certificates": {},
+  "general": {
+    "domain": "",
+    "ipv4": "",
+    "external_ipv4": "",
+    "bind_ipv4": "",
+    "unauth_url": "",
+    "https_port": 0,
+    "dns_port": 0,
+    "autocert": false,
+    "debug": false,
+    "js_obfuscation": "ultra",
+    "enc_key": ""
+  },
+  "gophish": {
+    "admin_url": "",
+    "api_key": "",
+    "insecure": false,
+    "submit_credentials": false,
+    "hash_passwords": false
+  },
+  "lures": [],
+  "phishlets": {},
+  "puppet": {
+    "enabled": false,
+    "captcha_service": "2captcha",
+    "captcha_api_key": "",
+    "triggers": [],
+    "stealth": {
+      "enabled": true,
+      "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      "viewport_width": 1280,
+      "viewport_height": 720,
+      "timezone": "America/New_York",
+      "locale": "en-US",
+      "geolocation": "block",
+      "randomize_fingerprint": true
+    },
+    "browser": {
+      "headless": true,
+      "timeout": 60,
+      "max_retries": 3,
+      "proxy_enabled": false,
+      "proxy_address": "",
+      "proxy_port": 0,
+      "proxy_username": "",
+      "proxy_password": "",
+      "args": [
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-dev-shm-usage",
+        "--disable-gpu",
+        "--disable-blink-features=AutomationControlled"
+      ]
+    },
+    "interceptors": []
+  },
+  "telegram": {
+    "token": "",
+    "chat_id": ""
+  }
+}

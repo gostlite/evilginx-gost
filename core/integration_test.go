@@ -135,11 +135,12 @@ func TestLureHostnameValidation(t *testing.T) {
 		shouldPass       bool
 		description      string
 	}{
-		{"login.phish.com", "login.example.com", true, "Valid subdomain"},
-		{"phish.com", "example.com", true, "Valid TLD-only (empty subdomain)"},
-		{"sub.login.phish.com", "login.example.com", true, "Valid nested subdomain"},
+		{"login.example.com", "auth.example.com", true, "Valid subdomain"},
+		{"example.com", "auth.example.com", true, "Valid TLD-only (empty subdomain)"},
+		{"sub.login.example.com", "auth.example.com", true, "Valid nested subdomain"},
 		{"", "example.com", false, "Empty lure hostname"},
-		{"phish.com", "", false, "Empty phishlet hostname"},
+		{"example.com", "", false, "Empty phishlet hostname"},
+		{"google.com", "example.com", false, "Different domain"},
 	}
 
 	for _, tc := range testCases {
@@ -152,6 +153,8 @@ func TestLureHostnameValidation(t *testing.T) {
 		}
 	}
 }
+
+// ... URL Rewriting Tests ...
 
 // TestHTMLParserIntegration tests HTML parser with different content types
 func TestHTMLParserIntegration(t *testing.T) {
@@ -184,11 +187,11 @@ func TestHTMLParserIntegration(t *testing.T) {
 			hasError: false,
 		},
 		{
-			name:     "Invalid HTML structure",
+			name:     "Invalid HTML structure - Should parse anyway", // html.Parse is lenient
 			html:     "Not HTML content",
 			script:   "<script>console.log('test');</script>",
 			location: "body_bottom",
-			hasError: true,
+			hasError: false, 
 		},
 		{
 			name:     "Invalid location",
